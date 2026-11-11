@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+var/
+.env
+node_modules/
+web/.next/
+web/out/
+evals/**/results/
+*.egg-info/
