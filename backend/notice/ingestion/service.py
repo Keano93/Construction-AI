@@ -18,6 +18,8 @@ from ..record import audit, log_project_event
 from ..retrieval import chunk_spans, get_embedder
 from .extractors import MESSAGE_KINDS, extract
 
+REVISION_KINDS = {"drawing_register", "spec", "drawing"}
+
 
 @dataclass
 class IngestResult:
@@ -113,6 +115,12 @@ def ingest_file(
             db.add(contract)
             db.flush()
             enqueue(db, "contract.extract", {"contract_id": contract.id}, project.id)
+        elif ex.kind in REVISION_KINDS:
+            from ..agents.revision_agent.agent import find_base_document
+
+            base = find_base_document(db, doc)
+            if base is not None:
+                enqueue(db, "revision_agent.compare", {"base_id": base.id, "revised_id": doc.id}, project.id)
         elif ex.kind in MESSAGE_KINDS:
             for item in items:
                 enqueue(db, "notice_agent.process_item", {"item_id": item.id}, project.id)

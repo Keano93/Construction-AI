@@ -2,15 +2,11 @@
 
 from ..contract.service import SPEC as CONTRACT_SPEC
 from .base import AgentSpec
+from .claims_agent.agent import SPEC as CLAIMS_SPEC
 from .notice_agent.agent import SPEC as NOTICE_SPEC
+from .revision_agent.agent import SPEC as REVISION_SPEC
 
 PLANNED = [
-    AgentSpec("revision_agent", "0.0.0", "Revision agent", "protect_the_money",
-              "Compares two revisions of a drawing register, spec or drawing; lists changes, likely cost impact, and hands potential variations to the Notice agent.",
-              ["drawing register", "spec", "drawing PDF"], ["change list", "potential variation"], status="planned"),
-    AgentSpec("claims_agent", "0.0.0", "Claims agent", "protect_the_money",
-              "Assembles a chronological evidence timeline for selected events and drafts a claim narrative.",
-              ["events", "project record"], ["timeline", "claim narrative"], status="planned"),
     AgentSpec("valuation_agent", "0.0.0", "Valuation agent", "get_paid",
               "Drafts the monthly payment application from progress evidence and approved variations; chases missing evidence.",
               ["diaries", "programme", "approved variations"], ["draft payment application"], status="planned"),
@@ -25,4 +21,4 @@ PLANNED = [
               ["subcontractor quotes"], ["levelled comparison", "clarifications"], status="planned"),
 ]
 
-AGENTS: list[AgentSpec] = [NOTICE_SPEC, CONTRACT_SPEC, *PLANNED]
+AGENTS: list[AgentSpec] = [NOTICE_SPEC, REVISION_SPEC, CLAIMS_SPEC, CONTRACT_SPEC, *PLANNED]

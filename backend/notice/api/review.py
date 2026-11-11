@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..export.drafts import to_docx, to_pdf
-from ..models import Deadline, Draft, Event, Item, Project, ReviewAction, ReviewItem, User
+from ..models import Claim, Deadline, Draft, Event, Item, Project, ReviewAction, ReviewItem, RevisionComparison, User
 from ..record import audit
 from ..review import service
 from . import serializers as S
@@ -47,6 +47,14 @@ def get_review(review_id: uuid.UUID, user: User = Depends(current_user), db: Ses
         out["related_items"] = [S.item(i) for i in db.execute(select(Item).where(Item.id.in_([uuid.UUID(x) for x in e.related_item_ids]))).scalars()]
     if r.source_item_id:
         out["source_item"] = S.item(db.get(Item, r.source_item_id))
+    if r.kind == "revision_comparison" and r.payload.get("comparison_id"):
+        from .phase2 import comparison_out
+
+        out["comparison"] = comparison_out(db, db.get(RevisionComparison, uuid.UUID(r.payload["comparison_id"])))
+    if r.kind == "claim_draft" and r.payload.get("claim_id"):
+        from .phase2 import claim_out
+
+        out["claim"] = claim_out(db.get(Claim, uuid.UUID(r.payload["claim_id"])))
     out["actions"] = [{"action": a.action, "user_id": str(a.user_id), "comment": a.comment, "created_at": S.iso(a.created_at)}
                       for a in db.execute(select(ReviewAction).where(ReviewAction.review_item_id == r.id).order_by(ReviewAction.created_at)).scalars()]
     return out

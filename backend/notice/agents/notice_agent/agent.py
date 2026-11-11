@@ -140,59 +140,74 @@ def run_notice_agent_for_item(db: Session, item_id: uuid.UUID) -> dict:
                               entity_id=ev.id, payload={"item_id": str(item.id), "category": v.category})
             return {"category": v.category, "related_event": ev.ref}
 
-    event = Event(project_id=project.id, ref=_next_event_ref(db, project.id), category=v.category, title=raw.title[:300],
-                  description=raw.summary, trigger_date=v.trigger_date, source_item_id=item.id, agent_run_id=run.id,
+    rule_rows = {str(r.id): r for r in rules}
+    primary = v.primary_rule
+    linked = [rule_rows[rv.id] for rv in v.rules]
+    if primary is not None:
+        linked = [rule_rows[primary.id]] + [r for r in linked if str(r.id) != primary.id]
+    evidence_quote = item.text[v.evidence_spans[0][0]:v.evidence_spans[0][1]] if v.evidence_spans else None
+    result = open_event(
+        db, project=project, parties=parties, item=item, doc=doc, run=run, category=v.category, title=raw.title,
+        summary=raw.summary, trigger_date=v.trigger_date, rules=linked, confidence=v.confidence,
+        evidence_citations=msg_citations, evidence_quote=evidence_quote, issues=v.issues,
+        payload_extra={"classification": raw.model_dump(), "auto_linked": v.auto_linked},
+    )
+    return {"category": v.category, **result}
+
+
+def open_event(db: Session, *, project: Project, parties: list[Party], item: Item, doc: Document, run, category: str,
+               title: str, summary: str, trigger_date: date, rules: list[ContractRule], confidence: float,
+               evidence_citations: list[dict], evidence_quote: str | None, issues: list[str],
+               payload_extra: dict | None = None, actor: str | None = None) -> dict:
+    """Open a register event: start deadline clocks for each linked rule (deterministic), draft the notice for the
+    primary (first) rule and put it in the review queue. Shared by the message pipeline and agent hand-offs."""
+    actor = actor or f"agent:{SPEC.name}"
+    event = Event(project_id=project.id, ref=_next_event_ref(db, project.id), category=category, title=title[:300],
+                  description=summary, trigger_date=trigger_date, source_item_id=item.id, agent_run_id=run.id if run else None,
                   related_item_ids=[str(item.id)])
     db.add(event)
     db.flush()
-    log_project_event(db, project.id, "event.created", actor=f"agent:{SPEC.name}", entity_type="event", entity_id=event.id,
+    log_project_event(db, project.id, "event.created", actor=actor, entity_type="event", entity_id=event.id,
                       payload={"ref": event.ref, "category": event.category, "trigger_date": event.trigger_date})
 
-    rule_rows = {str(r.id): r for r in rules}
     deadlines: list[Deadline] = []
     clause_citations = []
-    contract_doc_cache: dict[uuid.UUID, Document] = {}
-    for rv in v.rules:
-        r = rule_rows[rv.id]
-        trace = tool_compute_deadline(project, r, v.trigger_date)
+    for r in rules:
+        trace = tool_compute_deadline(project, r, trigger_date)
         if trace:
-            d = Deadline(project_id=project.id, event_id=event.id, rule_id=r.id,
-                         label=f"Clause {r.clause_ref} {r.title}", trigger_date=v.trigger_date,
-                         due_date=date.fromisoformat(trace["due_date"]), trace=trace)
+            d = Deadline(project_id=project.id, event_id=event.id, rule_id=r.id, label=f"Clause {r.clause_ref} {r.title}",
+                         trigger_date=trigger_date, due_date=date.fromisoformat(trace["due_date"]), trace=trace)
             db.add(d)
             deadlines.append(d)
         contract = db.get(Contract, r.contract_id)
-        cdoc = contract_doc_cache.setdefault(contract.document_id, db.get(Document, contract.document_id))
         if r.source_char_start is not None:
-            clause_citations.append({"document_id": str(cdoc.id), "quote": r.source_quote, "char_start": r.source_char_start,
-                                     "char_end": r.source_char_end, "item_id": None, "clause_ref": r.clause_ref,
-                                     "label": f"Clause {r.clause_ref}", "verified": True})
+            clause_citations.append({"document_id": str(contract.document_id), "quote": r.source_quote,
+                                     "char_start": r.source_char_start, "char_end": r.source_char_end, "item_id": None,
+                                     "clause_ref": r.clause_ref, "label": f"Clause {r.clause_ref}", "verified": True})
     db.flush()
     for d in deadlines:
         log_project_event(db, project.id, "deadline.started", actor="system:deadline_engine", entity_type="deadline",
                           entity_id=d.id, payload={"event": event.ref, "due_date": d.due_date, "rule": d.label})
 
-    draft = None
-    primary = v.primary_rule
-    draft_issues: list[str] = []
-    if primary is not None:
-        draft, draft_issues = _draft_notice(db, project, parties, item, doc, event, rule_rows[primary.id], v,
-                                            next((d for d in deadlines if str(d.rule_id) == primary.id), None))
+    draft, draft_issues = None, []
+    if rules:
+        primary = rules[0]
+        draft, draft_issues = _draft_notice(db, project, parties, item, doc, event, primary, category, evidence_quote,
+                                            next((d for d in deadlines if d.rule_id == primary.id), None))
 
     earliest = min((d.due_date for d in deadlines), default=None)
-    title_prefix = {"change": "Potential change", "delay": "Delay", "instruction": "Instruction", "disruption": "Disruption"}[v.category]
-    summary = raw.summary
-    if not v.rules:
+    prefix = {"change": "Potential change", "delay": "Delay", "instruction": "Instruction", "disruption": "Disruption"}.get(category, category.title())
+    if not rules:
         summary += " No approved contract rule is linked - approve the contract rules or link one manually."
     review = tool_create_review_item(
-        db, project_id=project.id, spec=SPEC, run=run, kind="notice_flag", category=v.category,
-        title=f"{title_prefix}: {raw.title[:200]}", summary=summary, confidence=v.confidence,
-        citations=msg_citations + clause_citations,
+        db, project_id=project.id, spec=SPEC, run=run, kind="notice_flag", category=category,
+        title=f"{prefix}: {title[:200]}", summary=summary, confidence=confidence,
+        citations=evidence_citations + clause_citations,
         payload={
-            "classification": raw.model_dump(),
-            "verification": {"issues": v.issues + draft_issues, "auto_linked": v.auto_linked},
-            "trigger_date": v.trigger_date.isoformat() if v.trigger_date else None,
-            "rules": [{"id": rv.id, "clause_ref": rv.clause_ref, "title": rv.title, "condition_precedent": rv.condition_precedent} for rv in v.rules],
+            **(payload_extra or {}),
+            "verification": {"issues": issues + draft_issues, "auto_linked": (payload_extra or {}).get("auto_linked", False)},
+            "trigger_date": trigger_date.isoformat() if trigger_date else None,
+            "rules": [{"id": str(r.id), "clause_ref": r.clause_ref, "title": r.title, "condition_precedent": r.condition_precedent} for r in rules],
             "deadlines": [{"id": str(d.id), "label": d.label, "due_date": str(d.due_date), "trace": d.trace} for d in deadlines],
             "event_ref": event.ref,
             "source": {"item_id": str(item.id), "document_id": str(doc.id), "filename": doc.filename, "channel": item.kind,
@@ -200,11 +215,13 @@ def run_notice_agent_for_item(db: Session, item_id: uuid.UUID) -> dict:
         },
         event_id=event.id, draft_id=draft.id if draft else None, source_item_id=item.id, priority_date=earliest,
     )
-    return {"category": v.category, "event": event.ref, "review_item": str(review.id), "deadlines": [str(d.due_date) for d in deadlines]}
+    return {"event": event.ref, "event_id": str(event.id), "review_item": str(review.id),
+            "deadlines": [str(d.due_date) for d in deadlines]}
 
 
 def _draft_notice(db: Session, project: Project, parties: list[Party], item: Item, doc: Document, event: Event,
-                  rule: ContractRule, v, deadline: Deadline | None) -> tuple[Draft, list[str]]:
+                  rule: ContractRule, category: str, evidence_quote: str | None,
+                  deadline: Deadline | None) -> tuple[Draft, list[str]]:
     contract = db.get(Contract, rule.contract_id)
     cdoc = db.get(Document, contract.document_id)
     clause = db.get(ContractClause, rule.clause_id) if rule.clause_id else None
@@ -212,11 +229,10 @@ def _draft_notice(db: Session, project: Project, parties: list[Party], item: Ite
     form_hits = tool_retrieve(db, project.id, "form of notices in writing email subject line CONTRACT NOTICE addresses Employer's Representative",
                               k=2, kinds=["contract"])
     form_text = "\n...\n".join(h.text for h in form_hits) or "(not found)"
-    evidence_quote = item.text[v.evidence_spans[0][0]:v.evidence_spans[0][1]] if v.evidence_spans else None
     period = f"{rule.period_value} {(rule.period_unit or '').replace('_', ' ')}" if rule.period_value is not None else "no fixed period"
     variables = {
         "project": project_block(project), "project_name": project.name, "signatory": _signatory(parties),
-        "category": v.category, "title": event.title, "summary": event.description,
+        "category": category, "title": event.title, "summary": event.description,
         "trigger_date": event.trigger_date.isoformat(), "period": period,
         "due_date": deadline.due_date.isoformat() if deadline else "no fixed period",
         "clause_ref": rule.clause_ref, "clause_title": rule.title, "clause_text": clause_text,

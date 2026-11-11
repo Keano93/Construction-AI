@@ -383,3 +383,43 @@ class Job(Base):
     run_after: Mapped[datetime] = created()
     created_at: Mapped[datetime] = created()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# --- Phase 2 -------------------------------------------------------------
+
+class RevisionComparison(Base):
+    """Revision agent output: deterministic diff of two document revisions plus model assessment per change."""
+
+    __tablename__ = "revision_comparisons"
+    id: Mapped[uuid.UUID] = pk()
+    project_id: Mapped[uuid.UUID] = fk("projects.id")
+    base_document_id: Mapped[uuid.UUID] = fk("documents.id")
+    revised_document_id: Mapped[uuid.UUID] = fk("documents.id")
+    method: Mapped[str] = mapped_column(String(20))  # register | text
+    agent_run_id: Mapped[uuid.UUID | None] = fk("agent_runs.id", nullable=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    flags: Mapped[list] = mapped_column(JSONB, default=list)
+    changes: Mapped[list] = mapped_column(JSONB, default=list)  # see agents/revision_agent/diff.py Change
+    status: Mapped[str] = mapped_column(String(20), default="complete")
+    created_by: Mapped[uuid.UUID | None] = fk("users.id", nullable=True)
+    created_at: Mapped[datetime] = created()
+
+
+class Claim(Base):
+    """Claims agent output: evidence timeline, notice compliance and narrative for one or more events."""
+
+    __tablename__ = "claims"
+    id: Mapped[uuid.UUID] = pk()
+    project_id: Mapped[uuid.UUID] = fk("projects.id")
+    ref: Mapped[str] = mapped_column(String(20))  # CL-001
+    title: Mapped[str] = mapped_column(String(400))
+    event_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    timeline: Mapped[list] = mapped_column(JSONB, default=list)
+    notice_compliance: Mapped[list] = mapped_column(JSONB, default=list)
+    narrative: Mapped[dict] = mapped_column(JSONB, default=dict)
+    gaps: Mapped[list] = mapped_column(JSONB, default=list)
+    draft_id: Mapped[uuid.UUID | None] = fk("drafts.id", nullable=True)
+    agent_run_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    created_by: Mapped[uuid.UUID | None] = fk("users.id", nullable=True)
+    created_at: Mapped[datetime] = created()

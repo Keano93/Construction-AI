@@ -1,0 +1,27 @@
+{
+  "_note": "Ground truth for the Riverside demo revision pairs. 'changes' maps change key -> is it a potential variation. 'downplaying' = the document's own description understates the change.",
+  "pairs": [
+    {
+      "base": "drawings/Drawing Register Rev A.xlsx",
+      "revised": "drawings/Drawing Register Rev B.xlsx",
+      "downplaying": false,
+      "changes": {
+        "RA-ARC-201": true, "RA-ARC-202": true, "RA-ARC-203": true, "RA-ARC-204": true, "RA-ARC-205": true,
+        "RA-ARC-206": true, "RA-ARC-212": true, "RA-STR-110": true, "RA-STR-205": true, "RA-MEP-401": true,
+        "SK-S-031": true
+      }
+    },
+    {
+      "base": "drawings/M&E Spec Section 5 Rev 01.pdf",
+      "revised": "drawings/M&E Spec Section 5 Rev 02.pdf",
+      "downplaying": false,
+      "changes": {"label:section 5": false, "5.1": true, "5.2": true, "5.3": true, "5.4": true, "5.5": true}
+    },
+    {
+      "base": "drawings/RA-ARC-204 Rev P2.pdf",
+      "revised": "drawings/RA-ARC-204 Rev P3.pdf",
+      "downplaying": true,
+      "changes": {"label:title block": false, "1": true, "2": true, "<revision note>": false}
+    }
+  ]
+}

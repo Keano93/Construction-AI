@@ -291,6 +291,8 @@ def guess_kind(filename: str, text: str) -> str:
     ):
         if key in name:
             return kind
+    if re.search(r"\b[a-z]{1,4}-[a-z]{1,4}-\d{2,4}\b", name):
+        return "drawing"
     if looks_like_whatsapp(text):
         return "whatsapp"
     if looks_like_diary(text):

@@ -9,6 +9,7 @@ Login afterwards: demo@brennock.example / riverside-demo
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -21,7 +22,8 @@ from notice.db import get_engine, session_scope
 from notice.ingestion.extractors import MESSAGE_KINDS
 from notice.jobs import drain, enqueue
 from notice.ingestion.service import ingest_file
-from notice.models import Contract, ContractRule, Item, Organisation, Party, Project, ProjectShutdown, ReviewItem, User
+from notice.agents.claims_agent.agent import create_claim
+from notice.models import Contract, ContractRule, Event, Item, Organisation, Party, Project, ProjectShutdown, ReviewItem, User
 from notice.record import audit
 from notice.security import hash_password
 
@@ -114,16 +116,31 @@ def main() -> None:
 
         # 3. other project documents (used by later-phase agents)
         n = 0
-        for folder, kind in (("drawings", None), ("tender", "quote"), ("compliance", "compliance")):
+        n += len(_ingest_tree(db, project, user, "drawings", run_agents=True))  # revision pairs auto-compare
+        for folder, kind in (("tender", "quote"), ("compliance", "compliance")):
             n += len(_ingest_tree(db, project, user, folder, kind=kind))
-        print(f"Drawings, quotes, compliance: {n} documents")
+        print(f"Drawings, quotes, compliance: {n} documents (drawing/spec revisions queued for the Revision agent)")
 
     processed = drain()
+
+    # Demo claim: the unforeseen ground conditions at B4-B6 (first change event that mentions them)
+    with session_scope() as db:
+        user = db.execute(select(User).where(User.email == EMAIL)).scalar_one()
+        project = db.execute(select(Project).where(Project.org_id == user.org_id)).scalar_one()
+        ground = [e for e in db.execute(select(Event).where(Event.project_id == project.id).order_by(Event.trigger_date)).scalars()
+                  if re.search(r"soft|ground|B4", f"{e.title} {e.description}", re.I)][:2]
+        if ground:
+            claim = create_claim(db, project, [e.id for e in ground], user.id, "Unforeseen ground conditions at B4-B6")
+            enqueue(db, "claims_agent.draft", {"claim_id": claim.id}, project.id)
+    processed += drain()
     with session_scope() as db:
         pending = db.execute(select(ReviewItem).where(ReviewItem.status == "pending")).scalars().all()
         low = sum(1 for r in pending if r.low_confidence)
         contract = db.execute(select(Contract)).scalars().first()
-        print(f"Jobs run: {processed}. Review queue: {len(pending)} pending ({low} low confidence). Contract status: {contract.status}")
+        kinds = {}
+        for r in pending:
+            kinds[r.kind] = kinds.get(r.kind, 0) + 1
+        print(f"Jobs run: {processed}. Review queue: {len(pending)} pending ({low} low confidence) {kinds}. Contract status: {contract.status}")
     print(f"\nLogin: {EMAIL} / {PASSWORD}")
 
 
