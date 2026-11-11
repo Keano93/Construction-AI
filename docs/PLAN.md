@@ -75,3 +75,22 @@ Citation shape (used by every agent output):
 **LLM providers.** `ClaudeProvider` (Anthropic SDK, structured outputs validated against Pydantic schemas) is used when `ANTHROPIC_API_KEY` is set. Otherwise `OfflineProvider` (deterministic rules/templates) runs so the system, tests and eval work without network; the UI shows which provider produced each output.
 
 Phases 2–4 add agents as new packages under `notice/agents/` using the same base contract, tools and review queue.
+
+## 4. Phase 1 status
+
+**Works end to end (offline provider, verified in tests and in the browser)**
+- Upload → extraction (PDF text + OCR fallback, DOCX, XLSX, EML, MSG, WhatsApp, site diary, images) → immutable documents/items with content hash → chunks with local embeddings.
+- Contract upload → 31 clauses split → 15 rules extracted with verified source quotes → approval UI (edit, approve, reject, reopen; edits logged with before/after).
+- Notice agent on 76 demo messages → 33 review items, 32 events (follow-up messages attached to existing events), deadlines with traces, draft notices with verified citations.
+- Review queue: filters, low-confidence flagging, side-by-side source passages, edit draft/trigger date (deadlines recomputed by code), approve, dismiss, reopen, DOCX/PDF export, mark issued (stops the clock).
+- Deadline engine: 54 unit tests. Whole backend suite: 79 tests.
+- Audit log hash chain verification; DB triggers block tampering; tenancy isolation tested.
+- Eval harness: offline baseline on 76 labelled messages — notifiable recall 1.00, precision 0.89, strict category accuracy 0.88, primary clause-link accuracy 0.84, trigger-date accuracy 0.14.
+
+**Caveats / stubbed**
+- The offline baseline's keyword rules were written alongside the demo dataset, so its eval scores are optimistic. A held-out labelled set (ideally real, anonymised correspondence) is needed before trusting any number.
+- The Claude provider is implemented and its request shape is unit-tested with a mocked client, but it has not been run against the live API in this environment (no API key). Run `run_eval.py --provider claude` to get real numbers.
+- Embeddings are a local hashing model (lexical). Swap in a locally hosted neural embedder via `set_embedder` for semantic retrieval.
+- Auth is email/password + JWT in localStorage (no magic link, password reset or roles beyond admin/member).
+- Docker images are defined and `docker compose config` validates, but they were not built here (no Docker daemon).
+- Inbound email/WhatsApp connectors are not built; ingestion is by upload.

@@ -155,6 +155,20 @@ def classify_offline(msg: MessageView, rules: list[RuleView], events: list[Event
                 score += 2  # generic claim notice ranks after specific notices
             return (score, r.period_value or 99)
 
+        def applies(r: RuleView) -> bool:
+            """Specialised notice rules only apply when their specific condition is present."""
+            t = r.title.lower()
+            if "site conditions" in t or "ground" in t:
+                return ground
+            if "discrepanc" in t or "ambiguit" in t:
+                return discrepancy
+            if "oral" in t:
+                return role in ER_ROLES
+            if "other than" in t or "direction" in t:
+                return role not in ER_ROLES and role in DESIGN_ROLES | {"unknown"}
+            return True
+
+        candidates = [r for r in candidates if applies(r)]
         for r in sorted(candidates, key=pref)[:2]:
             links.append(RuleLink(rule_id=r.id, clause_ref=r.clause_ref, reason=f"{category} event; clause {r.clause_ref} {r.title}"))
 

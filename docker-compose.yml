@@ -1,0 +1,45 @@
+# Local development stack: Postgres + pgvector, API, background worker, web UI.
+# Data stays on this machine; the only outbound call is to the Claude API when ANTHROPIC_API_KEY is set.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: notice
+      POSTGRES_PASSWORD: notice
+      POSTGRES_DB: notice
+    ports: ["5432:5432"]
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notice"]
+      interval: 3s
+      retries: 20
+
+  api:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    env_file: [{ path: .env, required: false }]
+    environment:
+      NOTICE_DATABASE_URL: postgresql+psycopg://notice:notice@db:5432/notice
+      NOTICE_STORAGE_DIR: /data/storage
+      NOTICE_CORS_ORIGINS: http://localhost:3000
+    volumes: [storage:/data/storage]
+    ports: ["8000:8000"]
+    depends_on: { db: { condition: service_healthy } }
+
+  worker:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    command: ["python", "-m", "notice.jobs.worker"]
+    env_file: [{ path: .env, required: false }]
+    environment:
+      NOTICE_DATABASE_URL: postgresql+psycopg://notice:notice@db:5432/notice
+      NOTICE_STORAGE_DIR: /data/storage
+    volumes: [storage:/data/storage]
+    depends_on: { api: { condition: service_started } }
+
+  web:
+    build: { context: ./web, args: { NOTICE_API_URL: "http://api:8000" } }
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  dbdata:
+  storage:
