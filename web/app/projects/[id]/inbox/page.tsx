@@ -1,103 +1,129 @@
 "use client";
 
-import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { api, download, ReviewItemT } from "@/lib/api";
-import { fmtDate, fmtDateTime } from "@/lib/format";
-import { CategoryBadge, Confidence, DaysLeft, Empty, ErrorBox, StatusPill } from "@/components/ui";
-import { SourcePassage } from "@/components/SourcePassage";
+import { fmtDate } from "@/lib/format";
+import { CATEGORY_LABEL, cleanTitle } from "@/lib/text";
 import { useProject } from "@/components/project-context";
-import { ClaimBody, RevisionBody } from "@/components/review-kinds";
+import { DuePhrase, HighlightedText, Margin, Note, Section, sourceLabel, urgent } from "@/components/inbox/doc";
+import { claimNotes, noticeNotes, revisionNotes, RevisionChanges } from "@/components/inbox/kinds";
 
-const CATS = ["", "change", "delay", "instruction", "disruption", "noise"];
+type Row = ReviewItemT & { working_days_remaining: number | null };
+
+function listTitle(r: Row, project?: string) {
+  if (r.kind === "revision_comparison") {
+    const c = r.payload?.counts;
+    return `${r.payload?.revised?.filename?.replace(/\.[a-z]+$/i, "")}: ${c?.potential_variations ?? 0} possible variation${c?.potential_variations === 1 ? "" : "s"}`;
+  }
+  if (r.kind === "claim_draft") return `Claim ${r.payload?.claim_ref}: ${cleanTitle(r.title.replace(/^Claim CL-\d+:\s*/, ""), project)}`;
+  return cleanTitle(r.title, project);
+}
 
 function Inbox() {
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
-  const { reload: reloadProject } = useProject();
+  const router = useRouter();
+  const { project, reload: reloadProject } = useProject();
   const [status, setStatus] = useState("pending");
-  const [category, setCategory] = useState("");
-  const [lowOnly, setLowOnly] = useState(params.get("low") === "1");
-  const [items, setItems] = useState<ReviewItemT[] | null>(null);
-  const [selected, setSelected] = useState<string | null>(params.get("item"));
+  const [items, setItems] = useState<Row[] | null>(null);
+  const selected = params.get("item");
+
+  const select = useCallback((itemId: string | null) => {
+    router.replace(itemId ? `/projects/${id}/inbox?item=${itemId}` : `/projects/${id}/inbox`, { scroll: false });
+  }, [id, router]);
 
   const load = useCallback(() => {
-    const q = new URLSearchParams({ status });
-    if (category) q.set("category", category);
-    if (lowOnly) q.set("low_confidence", "true");
-    api<ReviewItemT[]>(`/projects/${id}/review?${q}`).then((rows) => {
+    api<Row[]>(`/projects/${id}/review?status=${status}`).then((rows) => {
       setItems(rows);
-      setSelected((cur) => cur ?? rows[0]?.id ?? null);
+      if (!selected && rows[0]) select(rows[0].id);
     });
-  }, [id, status, category, lowOnly]);
-  useEffect(load, [load]);
+  }, [id, status, selected, select]);
+  useEffect(load, [id, status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const index = items?.findIndex((x) => x.id === selected) ?? -1;
+  const next = () => items && items.length && select(items[Math.min(index + 1, items.length - 1)].id);
+  const prev = () => items && items.length && select(items[Math.max(index - 1, 0)].id);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).closest("input, textarea, select")) return;
+      if (e.key === "j") next();
+      if (e.key === "k") prev();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   return (
-    <div className="flex h-screen">
-      <section className="flex w-[380px] shrink-0 flex-col border-r border-slate-200 bg-white">
-        <div className="space-y-2 border-b border-slate-200 p-2">
-          <div className="flex items-center justify-between">
-            <h1 className="text-sm font-semibold">Review queue</h1>
-            <span className="text-2xs text-slate-500">{items?.length ?? 0} items</span>
-          </div>
-          <div className="flex gap-1">
-            <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="pending">Pending</option><option value="approved">Approved</option><option value="dismissed">Dismissed</option><option value="all">All</option>
-            </select>
-            <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
-              {CATS.map((c) => <option key={c} value={c}>{c || "All categories"}</option>)}
-            </select>
-          </div>
-          <label className="flex items-center gap-1.5 text-2xs text-slate-600"><input type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} /> Low confidence only</label>
+    <div className="flex h-screen bg-neutral-50">
+      <section className="flex w-[320px] shrink-0 flex-col border-r border-neutral-200 bg-white">
+        <div className="flex items-center justify-between px-4 pb-2 pt-5">
+          <h1 className="text-[15px] font-semibold text-neutral-900">To review</h1>
+          <select className="rounded border-0 bg-transparent text-xs text-neutral-500 focus:ring-0" value={status} onChange={(e) => { setStatus(e.target.value); select(null); }}>
+            <option value="pending">Pending</option><option value="approved">Approved</option><option value="dismissed">Dismissed</option><option value="all">All</option>
+          </select>
         </div>
-        <div className="flex-1 overflow-auto">
-          {items === null ? <Empty>Loading…</Empty> : items.length === 0 ? <Empty>Nothing here.</Empty> : items.map((it) => (
-            <button key={it.id} onClick={() => setSelected(it.id)}
-              className={`block w-full border-b border-slate-100 px-2.5 py-2 text-left ${selected === it.id ? "bg-sky-50" : "hover:bg-slate-50"} ${it.low_confidence ? "border-l-2 border-l-amber-400" : "border-l-2 border-l-transparent"}`}>
-              <div className="flex items-center gap-1.5">
-                <CategoryBadge category={it.category} />
-                <span className="text-2xs text-slate-400">{it.payload?.event_ref ?? it.payload?.claim_ref ?? (it.kind === "revision_comparison" ? "revision" : "")}</span>
-                <span className="ml-auto"><Confidence value={it.confidence} low={it.low_confidence} /></span>
+        <div className="flex-1 overflow-auto px-2 pb-4">
+          {items === null ? <p className="p-4 text-sm text-neutral-400">Loading…</p> : items.length === 0 ? (
+            <p className="p-4 text-sm text-neutral-400">Nothing to review.</p>
+          ) : items.map((it) => (
+            <button key={it.id} onClick={() => select(it.id)}
+              className={`block w-full rounded-md px-3 py-2.5 text-left ${selected === it.id ? "bg-neutral-100" : "hover:bg-neutral-50"}`}>
+              <div className="flex items-start gap-2">
+                <span className="line-clamp-2 flex-1 text-[13.5px] leading-snug text-neutral-900">{listTitle(it, project?.name)}</span>
+                {it.low_confidence && <span title="Needs checking: the agent is not confident" className="mt-1.5 h-2 w-2 shrink-0 rounded-full border border-neutral-400" />}
               </div>
-              <div className="mt-1 line-clamp-2 text-xs font-medium leading-snug">{it.title}</div>
-              <div className="mt-0.5 flex justify-between text-2xs text-slate-500">
-                <span>{it.kind === "revision_comparison" ? `${it.payload.counts.potential_variations} potential variation(s), ${it.payload.counts.not_on_register} not on register`
-                  : it.kind === "claim_draft" ? `claim · ${it.payload.timeline.length} timeline entries${it.payload.time_bar_risk ? " · time-bar risk" : ""}`
-                  : `${it.payload?.source?.channel} · ${fmtDate(it.payload?.source?.timestamp)}`}</span>
-                {it.priority_date && <span>notice due <b className="text-slate-700">{fmtDate(it.priority_date)}</b></span>}
+              <div className="mt-0.5 text-xs">
+                {it.priority_date ? <DuePhrase due={it.priority_date} wd={it.working_days_remaining} /> : <span className="text-neutral-400">{it.kind === "claim_draft" ? "Draft claim" : it.kind === "revision_comparison" ? "Drawing revision" : "No deadline"}</span>}
               </div>
             </button>
           ))}
         </div>
+        <div className="border-t border-neutral-100 px-4 py-2 text-[11px] text-neutral-400">j / k to move between items</div>
       </section>
       <section className="min-w-0 flex-1 overflow-auto">
-        {selected ? <Detail key={selected} reviewId={selected} projectId={id} onChange={() => { load(); reloadProject(); }} /> : <Empty>Select an item.</Empty>}
+        {selected ? <Detail key={selected} reviewId={selected} projectId={id} projectName={project?.name}
+          onChange={() => { load(); reloadProject(); }} onNext={index < (items?.length ?? 0) - 1 ? next : undefined} />
+          : <p className="p-10 text-sm text-neutral-400">Select an item.</p>}
       </section>
     </div>
   );
 }
 
-function Detail({ reviewId, projectId, onChange }: { reviewId: string; projectId: string; onChange: () => void }) {
-  const [r, setR] = useState<ReviewItemT | null>(null);
+function Detail({ reviewId, projectId, projectName, onChange, onNext }: {
+  reviewId: string; projectId: string; projectName?: string; onChange: () => void; onNext?: () => void;
+}) {
+  const [r, setR] = useState<(ReviewItemT & { working_days_remaining?: number | null }) | null>(null);
   const [draft, setDraft] = useState({ subject: "", recipient: "", body: "" });
-  const [trigger, setTrigger] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editDate, setEditDate] = useState<string | null>(null);
   const [comment, setComment] = useState("");
+  const [showComment, setShowComment] = useState(false);
+  const [active, setActive] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const apply = (x: ReviewItemT) => {
     setR(x);
     if (x.draft) setDraft({ subject: x.draft.subject, recipient: x.draft.recipient ?? "", body: x.draft.body });
-    setTrigger(x.event?.trigger_date ?? "");
   };
+  const reload = useCallback(() => api<ReviewItemT>(`/review/${reviewId}`).then(apply).catch((e) => setError(e.message)), [reviewId]);
   useEffect(() => {
-    api<ReviewItemT>(`/review/${reviewId}`).then(apply).catch((e) => setError(e.message));
-  }, [reviewId]);
+    reload();
+  }, [reload]);
 
-  if (!r) return <div className="p-4"><ErrorBox error={error} />{!error && <Empty>Loading…</Empty>}</div>;
+  const notes: Note[] = useMemo(() => {
+    if (!r) return [];
+    if (r.kind === "revision_comparison") return revisionNotes(r);
+    if (r.kind === "claim_draft") return claimNotes(r);
+    return noticeNotes(r);
+  }, [r]);
+
+  if (!r) return <p className="p-10 text-sm text-neutral-400">{error ?? "Loading…"}</p>;
+
   const pending = r.status === "pending";
   const dirty = !!r.draft && (draft.subject !== r.draft.subject || draft.body !== r.draft.body || draft.recipient !== (r.draft.recipient ?? ""));
-  const triggerDirty = !!r.event && trigger !== r.event.trigger_date;
 
   async function act(path: string, json: object = {}) {
     setBusy(true);
@@ -105,155 +131,159 @@ function Detail({ reviewId, projectId, onChange }: { reviewId: string; projectId
     try {
       apply(await api<ReviewItemT>(`/review/${reviewId}/${path}`, { method: "POST", json: { comment: comment || null, ...json } }));
       setComment("");
+      setShowComment(false);
       onChange();
+      return true;
     } catch (e: any) {
       setError(e.message);
+      return false;
     } finally {
       setBusy(false);
     }
   }
-  const save = () => act("edit", { ...(dirty ? draft : {}), ...(triggerDirty ? { trigger_date: trigger } : {}) });
+  const save = async () => {
+    if (await act("edit", draft)) setEditing(false);
+  };
   const approve = async () => {
-    if (dirty || triggerDirty) await save();
+    if (dirty && !(await act("edit", draft))) return;
+    setEditing(false);
     await act("approve");
   };
-  const issues: string[] = r.payload?.verification?.issues ?? [];
-  const cls = r.payload?.classification;
-  const draftPanel = (
-        <div className="space-y-2">
-      <h3 className="label">{r.kind === "claim_draft" ? "Draft claim" : r.kind === "revision_comparison" ? "Review" : "Draft notice"} {r.draft ? `· v${r.draft.version} · ${r.draft.status}` : ""}</h3>
-      {r.draft ? (
-        <div className="card space-y-2 p-2">
-          <label className="block space-y-0.5"><span className="label">To</span><input className="input" value={draft.recipient} disabled={!pending} onChange={(e) => setDraft({ ...draft, recipient: e.target.value })} /></label>
-          <label className="block space-y-0.5"><span className="label">Subject</span><input className="input font-medium" value={draft.subject} disabled={!pending} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} /></label>
-          <textarea className="input h-[420px] font-serif text-[12.5px] leading-relaxed" value={draft.body} disabled={!pending} onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
-        </div>
-      ) : r.kind === "revision_comparison" ? null : <Empty>No draft for this item.</Empty>}
+  const saveDate = async () => {
+    if (editDate && (await act("edit", { trigger_date: editDate }))) setEditDate(null);
+  };
+  const focus = (id: string | null) => {
+    setActive(id);
+    if (id) document.getElementById(`note-${id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
 
-      <input className="input" placeholder="Comment (logged with your decision)" value={comment} onChange={(e) => setComment(e.target.value)} />
-      <div className="flex flex-wrap gap-1.5">
-        {pending && (
-          <>
-            <button className="btn-primary" disabled={busy} onClick={approve}>{r.draft ? "Approve draft" : r.kind === "revision_comparison" ? "Mark reviewed" : "Confirm"}</button>
-            <button className="btn" disabled={busy || (!dirty && !triggerDirty)} onClick={save}>Save edits</button>
-            <button className="btn-danger" disabled={busy} onClick={() => act("dismiss")}>Dismiss</button>
-          </>
-        )}
-        {!pending && <button className="btn" disabled={busy} onClick={() => act("reopen")}>Reopen</button>}
-        {r.status === "approved" && r.draft && (
-          <>
-            <button className="btn" onClick={() => download(`/drafts/${r.draft!.id}/export?format=docx`, `${r.draft!.subject}.docx`).catch((e) => setError(e.message))}>Export DOCX</button>
-            <button className="btn" onClick={() => download(`/drafts/${r.draft!.id}/export?format=pdf`, `${r.draft!.subject}.pdf`).catch((e) => setError(e.message))}>Export PDF</button>
-            {r.event?.status !== "notified" && <button className="btn" disabled={busy} onClick={() => act("mark-issued", { issued_on: new Date().toISOString().slice(0, 10) })}>Mark as issued today</button>}
-          </>
-        )}
-      </div>
-      <p className="text-2xs text-slate-500">Notice never sends anything. Export the approved draft and send it from your own email, then mark it issued to stop the clock.</p>
-      {(r.actions?.length ?? 0) > 0 && (
-        <div className="text-2xs text-slate-500">
-          <div className="label">History</div>
-          {r.actions!.map((a, i) => <div key={i}>{fmtDateTime(a.created_at)} · {a.action}{a.comment ? ` — ${a.comment}` : ""}</div>)}
-        </div>
-      )}
-    </div>
-  );
-  const msgCites = r.citations.filter((c) => !c.clause_ref);
-  const clauseCites = r.citations.filter((c) => c.clause_ref);
+  // ---- header text per kind
+  const isNotice = r.kind === "notice_flag" || r.kind === "possible_event";
+  const comp = (r as any).comparison;
+  const claim = (r as any).claim;
+  const kindLine = isNotice
+    ? [CATEGORY_LABEL[r.category ?? "noise"], r.payload?.event_ref, sourceLabel(r.payload?.source)].filter(Boolean).join(" · ")
+    : r.kind === "revision_comparison" ? `Drawing revision · ${comp?.base.filename} → ${comp?.revised.filename}`
+    : `Claim · ${claim?.ref} · ${(r.payload?.events ?? []).map((e: any) => e.ref).join(", ")}`;
+  const title = r.kind === "revision_comparison" ? listTitle(r as Row, projectName) : cleanTitle(r.title, projectName);
+  const primary = r.payload?.rules?.[0];
+  const primaryDeadline = (r.deadlines ?? []).find((d) => d.rule_id === primary?.id) ?? r.deadlines?.[0];
+  const wd = r.working_days_remaining;
+  const issued = r.event?.status === "notified";
 
   return (
-    <div className="space-y-3 p-4">
-      <header className="space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <CategoryBadge category={r.category} />
-          <Confidence value={r.confidence} low={r.low_confidence} />
-          <StatusPill status={r.status} />
-          {r.event && <span className="text-2xs text-slate-500">{r.payload?.event_ref} · event {r.event.status}</span>}
-          <span className="ml-auto text-2xs text-slate-400">{r.agent} · {fmtDateTime(r.created_at)}</span>
-        </div>
-        <h2 className="text-base font-semibold leading-snug">{r.title}</h2>
-        <p className="text-xs text-slate-600">{r.summary}</p>
-        {cls?.secondary_categories?.length > 0 && <p className="text-2xs text-slate-500">Also: {cls.secondary_categories.join(", ")}</p>}
-      </header>
+    <div className="flex min-h-full">
+      <article className="mx-auto w-full max-w-[720px] px-10 pb-28 pt-8">
+        <div className="text-[13px] text-neutral-500">{kindLine}</div>
+        <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-tight text-neutral-900">{title}</h1>
+        {r.low_confidence && (
+          <p className="mt-2 flex items-center gap-1.5 text-[13px] text-neutral-500">
+            <span className="h-2 w-2 rounded-full border border-neutral-400" />
+            Needs checking — the agent isn’t confident. <button className="underline underline-offset-2" onClick={() => focus("why")}>Why?</button>
+          </p>
+        )}
 
-      {r.low_confidence && (
-        <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <b>Low confidence.</b>{" "}
-          {r.kind === "revision_comparison" ? "Check each assessed change against the drawings before raising or dismissing it."
-            : r.kind === "claim_draft" ? "The record behind this claim is thin or partly unverified. Check the timeline and add records before relying on it."
-            : "Check the classification, the linked clause and the awareness date against the source before approving."}
-          {issues.length > 0 && <ul className="mt-1 list-disc pl-4 text-2xs">{issues.map((x, i) => <li key={i}>{x}</li>)}</ul>}
-        </div>
-      )}
-      {!r.low_confidence && issues.length > 0 && (
-        <details className="text-2xs text-slate-500"><summary>Verification notes ({issues.length})</summary><ul className="list-disc pl-4">{issues.map((x, i) => <li key={i}>{x}</li>)}</ul></details>
-      )}
-      <ErrorBox error={error} />
+        <div className="mt-6 space-y-5">
+          <Section label="What happened">
+            <p>{r.summary}</p>
+            {comp?.flags?.length > 0 && <p className="mt-2">Note: {comp.flags[0]}</p>}
+          </Section>
 
-      {r.kind === "revision_comparison" ? (
-        <>
-          <RevisionBody r={r} projectId={projectId} onRaised={() => { api<ReviewItemT>(`/review/${reviewId}`).then(apply); onChange(); }} />
-          <div className="max-w-2xl">{draftPanel}</div>
-        </>
-      ) : r.kind === "claim_draft" ? (
-        <>
-          <ClaimBody r={r} projectId={projectId} />
-          <div>{draftPanel}</div>
-        </>
-      ) : (
-      <div className="grid gap-3 xl:grid-cols-2">
-        <div className="space-y-3">
-          <section className="space-y-1.5">
-            <h3 className="label">Triggering message</h3>
-            {r.source_item && (
-              <div className="text-2xs text-slate-500">{r.source_item.author} · {r.source_item.kind} · {fmtDateTime(r.source_item.timestamp)}{r.source_item.subject ? ` · ${r.source_item.subject}` : ""}</div>
+          <Section label="What to do">
+            {isNotice && primary && primaryDeadline ? (
+              <p>
+                {r.status === "approved" ? (issued ? "Notice issued. " : "Approved — export the letter, send it from your own email, then mark it issued. ")
+                  : <>Send a notice under <button className="underline decoration-neutral-300 underline-offset-2" onClick={() => focus(r.citations.findIndex((c) => c.clause_ref === primary.clause_ref) >= 0 ? `c${r.citations.findIndex((c) => c.clause_ref === primary.clause_ref)}` : "why")}>clause {primary.clause_ref}</button> by{" "}
+                    <button className={`font-medium underline decoration-neutral-300 underline-offset-2 ${urgent(wd) ? "text-red-600" : ""}`} onClick={() => focus(`d${primaryDeadline.id}`)}>{fmtDate(primaryDeadline.due_date)}</button>.{" "}</>}
+                <span className="text-[13px]"><DuePhrase due={r.priority_date} wd={wd} issued={issued} /></span>
+              </p>
+            ) : isNotice ? (
+              <p>No contract clause is linked yet — approve the contract rules, then check whether a notice is needed.</p>
+            ) : r.kind === "revision_comparison" ? (
+              <p>Check each change below and raise the ones that are variations. {r.payload?.counts?.not_on_register === 0 ? "All of them relate to events already on the register." : `${r.payload?.counts?.not_on_register} aren’t on the register yet.`}</p>
+            ) : (
+              <p>Review the draft claim below.{claim?.time_bar_risk && <> <span className="text-red-600">Time-bar risk:</span> notices that are conditions precedent were not given in time — <button className="underline underline-offset-2" onClick={() => focus("notices")}>see notice position</button>.</>}</p>
             )}
-            {msgCites.length === 0 && <div className="text-2xs text-amber-700">No verified quote from the message.</div>}
-            {msgCites.map((c, i) => <SourcePassage key={i} citation={c} projectId={projectId} />)}
-            {(r.related_items?.length ?? 0) > 1 && (
-              <details className="text-2xs text-slate-600">
-                <summary>{r.related_items!.length - 1} further message(s) linked to this event</summary>
-                {r.related_items!.filter((x) => x.id !== r.source_item_id).map((x) => (
-                  <div key={x.id} className="mt-1 rounded border border-slate-200 bg-white p-1.5"><b>{x.author}</b> {fmtDateTime(x.timestamp)}<div className="whitespace-pre-wrap">{x.text}</div></div>
-                ))}
-              </details>
+            {isNotice && r.event && pending && (
+              <p className="mt-1 text-[13px] text-neutral-500">
+                Clock started {editDate === null ? (
+                  <><button className="underline decoration-neutral-300 underline-offset-2" onClick={() => setEditDate(r.event!.trigger_date)}>{fmtDate(r.event.trigger_date)}</button> (date aware)</>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <input type="date" className="rounded border border-neutral-300 px-1 py-0.5 text-[13px]" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                    <button className="font-medium text-neutral-900" disabled={busy} onClick={saveDate}>Recalculate</button>
+                    <button onClick={() => setEditDate(null)}>Cancel</button>
+                  </span>
+                )}
+              </p>
             )}
-          </section>
+          </Section>
 
-          <section className="space-y-1.5">
-            <h3 className="label">Contract clauses relied on</h3>
-            {(r.payload?.rules ?? []).length === 0 && <div className="text-2xs text-amber-700">No approved clause linked.</div>}
-            {clauseCites.map((c, i) => <SourcePassage key={i} citation={c} projectId={projectId} context={120} />)}
-          </section>
-
-          <section className="space-y-1.5">
-            <h3 className="label">Deadlines (computed by the deadline engine)</h3>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-slate-600">Contractor aware on</span>
-              <input type="date" className="input w-36" value={trigger} disabled={!pending} onChange={(e) => setTrigger(e.target.value)} />
-              {triggerDirty && <span className="text-2xs text-amber-700">save to recompute</span>}
-            </div>
-            {cls?.trigger_date_basis && <div className="text-2xs text-slate-500">Basis: {cls.trigger_date_basis}</div>}
-            <div className="card divide-y divide-slate-100">
-              {(r.deadlines ?? []).map((d) => (
-                <div key={d.id} className="px-2 py-1.5 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{d.label}</span>
-                    <span className="flex items-center gap-2"><b className="tabular-nums">{fmtDate(d.due_date)}</b><StatusPill status={d.status} /></span>
+          {r.kind === "revision_comparison" ? (
+            <Section label="Changes">
+              <RevisionChanges r={r} projectId={projectId} active={active} onSelect={focus} onChanged={() => { reload(); onChange(); }} />
+            </Section>
+          ) : r.draft ? (
+            <Section label={r.kind === "claim_draft" ? "Draft claim" : "Draft notice"}>
+              <div className="mt-2 rounded-lg bg-white px-8 py-7 shadow-sm ring-1 ring-neutral-200">
+                {editing ? (
+                  <div className="space-y-3">
+                    <input className="w-full border-b border-neutral-200 pb-1 text-[14px] text-neutral-600 focus:outline-none" value={draft.recipient} onChange={(e) => setDraft({ ...draft, recipient: e.target.value })} placeholder="To" />
+                    <input className="w-full border-b border-neutral-200 pb-1 text-[15px] font-semibold focus:outline-none" value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="Subject" />
+                    <textarea className="min-h-[480px] w-full resize-y text-[15px] leading-relaxed focus:outline-none" value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
                   </div>
-                  <div className="text-2xs text-slate-500">{d.trace.explanation}</div>
-                  {d.trace.skipped.filter((s) => !s.reason.startsWith("weekend")).length > 0 && (
-                    <div className="text-2xs text-slate-500">Skipped: {d.trace.skipped.filter((s) => !s.reason.startsWith("weekend")).map((s) => `${fmtDate(s.date)} (${s.reason})`).join(", ")}</div>
-                  )}
-                </div>
-              ))}
-              {(r.deadlines ?? []).length === 0 && <div className="px-2 py-1.5 text-2xs text-slate-500">No deadline (no linked rule with a fixed period).</div>}
-            </div>
-          </section>
+                ) : (
+                  <div className="space-y-3 text-[15px] leading-relaxed">
+                    <div className="text-[14px] text-neutral-500">To: {draft.recipient}</div>
+                    <div className="font-semibold">{draft.subject}</div>
+                    <HighlightedText text={draft.body} notes={notes} active={active} onSelect={focus} />
+                  </div>
+                )}
+              </div>
+              {!editing && notes.some((n) => n.quote) && <p className="mt-2 text-[12px] text-neutral-400">Underlined passages come from the source documents — click one to see where.</p>}
+            </Section>
+          ) : null}
         </div>
 
-        {draftPanel}
-      </div>
-      )}
+        {/* action bar */}
+        <div className="sticky bottom-4 mt-8 flex items-center gap-3 rounded-lg bg-white/95 px-4 py-2.5 text-[14px] shadow-md ring-1 ring-neutral-200 backdrop-blur">
+          {pending && !editing && (
+            <>
+              <button className="rounded-md bg-neutral-900 px-3.5 py-1.5 font-medium text-white hover:bg-neutral-800 disabled:opacity-50" disabled={busy} onClick={approve}>
+                {r.kind === "revision_comparison" ? "Mark as reviewed" : "Approve"}
+              </button>
+              {r.draft && <button className="text-neutral-700 hover:text-neutral-900" onClick={() => setEditing(true)}>Edit</button>}
+              <button className="text-neutral-500 hover:text-neutral-900" disabled={busy} onClick={() => (showComment ? act("dismiss") : setShowComment(true))}>{showComment ? "Confirm dismiss" : "Dismiss"}</button>
+            </>
+          )}
+          {pending && editing && (
+            <>
+              <button className="rounded-md bg-neutral-900 px-3.5 py-1.5 font-medium text-white disabled:opacity-50" disabled={busy} onClick={approve}>Save and approve</button>
+              <button className="text-neutral-700" disabled={busy || !dirty} onClick={save}>Save</button>
+              <button className="text-neutral-500" onClick={() => { setEditing(false); apply(r); }}>Cancel</button>
+            </>
+          )}
+          {!pending && (
+            <>
+              <span className="text-neutral-500">{r.status === "approved" ? "Approved" : "Dismissed"}</span>
+              {r.status === "approved" && r.draft && (
+                <>
+                  <button className="text-neutral-700 hover:text-neutral-900" onClick={() => download(`/drafts/${r.draft!.id}/export?format=docx`, `${r.draft!.subject}.docx`).catch((e) => setError(e.message))}>Word</button>
+                  <button className="text-neutral-700 hover:text-neutral-900" onClick={() => download(`/drafts/${r.draft!.id}/export?format=pdf`, `${r.draft!.subject}.pdf`).catch((e) => setError(e.message))}>PDF</button>
+                  {isNotice && !issued && <button className="text-neutral-700 hover:text-neutral-900" disabled={busy} onClick={() => act("mark-issued", { issued_on: new Date().toISOString().slice(0, 10) })}>Mark issued today</button>}
+                </>
+              )}
+              <button className="text-neutral-500 hover:text-neutral-900" disabled={busy} onClick={() => act("reopen")}>Reopen</button>
+            </>
+          )}
+          {showComment && pending && (
+            <input autoFocus className="min-w-0 flex-1 rounded border border-neutral-200 px-2 py-1 text-[13px] focus:outline-none" placeholder="Reason (optional, kept in the audit log)" value={comment} onChange={(e) => setComment(e.target.value)} />
+          )}
+          {error && <span className="truncate text-[13px] text-red-600">{error}</span>}
+          {onNext && <button className="ml-auto text-neutral-500 hover:text-neutral-900" onClick={onNext}>Next →</button>}
+        </div>
+      </article>
+      <Margin notes={notes} active={active} onSelect={focus} projectId={projectId} />
     </div>
   );
 }

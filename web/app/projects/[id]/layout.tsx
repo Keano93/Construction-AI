@@ -7,7 +7,6 @@ import { api, setToken } from "@/lib/api";
 import { Ctx, ProjectT } from "@/components/project-context";
 
 const NAV = [
-  ["", "Overview"],
   ["/inbox", "Review queue"],
   ["/deadlines", "Deadlines"],
   ["/events", "Event register"],
@@ -37,34 +36,34 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
     const n = key === "/inbox" ? project.stats.review_pending : key === "/contract" ? project.stats.rules_proposed : key === "/deadlines" ? project.stats.deadlines_overdue : 0;
     if (!n) return null;
     const red = key === "/deadlines";
-    return <span className={`ml-auto rounded px-1.5 text-2xs font-semibold ${red ? "bg-rose-600 text-white" : "bg-slate-200 text-slate-700"}`}>{n}</span>;
+    return <span className={`ml-auto rounded px-1.5 text-2xs font-semibold ${red ? "text-red-600" : "text-neutral-400"}`}>{n}</span>;
   };
 
   return (
     <Ctx.Provider value={{ project, reload, system }}>
-      <div className="flex min-h-screen">
-        <aside className="sticky top-0 flex h-screen w-52 shrink-0 flex-col border-r border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-3 py-3">
-            <Link href="/projects" className="text-2xs font-semibold uppercase tracking-wider text-emerald-700">Notice</Link>
-            <div className="mt-1 truncate text-sm font-semibold">{project?.name ?? "…"}</div>
-            <div className="truncate text-2xs text-slate-500">{project?.contract_form}</div>
+      <div className="flex min-h-screen bg-neutral-50">
+        <aside className="sticky top-0 flex h-screen w-52 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50">
+          <div className="px-4 pb-3 pt-5">
+            <Link href="/projects" className="text-xs font-semibold text-neutral-400 hover:text-neutral-700">Notice</Link>
+            <div className="mt-1 truncate text-[14px] font-semibold text-neutral-900">{project?.name ?? "…"}</div>
+            <div className="truncate text-xs text-neutral-500">{project?.location}</div>
           </div>
-          <nav className="flex-1 space-y-px p-2">
+          <nav className="flex-1 space-y-px px-2">
             {NAV.map(([href, label]) => {
               const full = base + href;
-              const active = href === "" ? pathname === base : pathname.startsWith(full);
+              const active = pathname.startsWith(full);
               return (
-                <Link key={href} href={full} className={`flex items-center rounded px-2 py-1.5 text-xs ${active ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}>
+                <Link key={href} href={full} className={`flex items-center rounded-md px-2 py-1.5 text-[13px] ${active ? "bg-neutral-200/70 font-medium text-neutral-900" : "text-neutral-600 hover:bg-neutral-100"}`}>
                   {label}
                   {badge(href)}
                 </Link>
               );
             })}
           </nav>
-          <div className="space-y-1 border-t border-slate-200 p-3 text-2xs text-slate-500">
+          <div className="space-y-1 p-4 text-[11px] text-neutral-400">
             {system && (
               <div title="LLM provider used by agents">
-                Agents: <span className={`font-semibold ${system.llm_provider === "offline" ? "text-amber-700" : "text-emerald-700"}`}>{system.llm_provider}</span> ({system.model})
+                Agents: <span className="text-neutral-600">{system.llm_provider}</span> ({system.model})
               </div>
             )}
             <div>Drafts only. Nothing is sent from Notice.</div>

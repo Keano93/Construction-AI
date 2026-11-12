@@ -42,7 +42,7 @@ export default function Projects() {
             <tbody>
               {projects.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50">
-                  <td className="td"><Link className="font-medium text-sky-800 hover:underline" href={`/projects/${p.id}`}>{p.name}</Link> <span className="text-slate-400">{p.code}</span></td>
+                  <td className="td"><Link className="font-medium text-sky-800 hover:underline" href={`/projects/${p.id}/inbox`}>{p.name}</Link> <span className="text-slate-400">{p.code}</span></td>
                   <td className="td">{p.location}</td>
                   <td className="td">{p.contract_form}</td>
                 </tr>

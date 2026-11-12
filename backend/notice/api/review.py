@@ -6,7 +6,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..agents.base import project_calendar
 from ..db import get_db
+from ..deadlines import working_days_remaining
 from ..export.drafts import to_docx, to_pdf
 from ..models import Claim, Deadline, Draft, Event, Item, Project, ReviewAction, ReviewItem, RevisionComparison, User
 from ..record import audit
@@ -31,13 +33,20 @@ def list_review(project_id: uuid.UUID, status: str | None = "pending", category:
     if low_confidence is not None:
         q = q.where(ReviewItem.low_confidence.is_(low_confidence))
     q = q.order_by(ReviewItem.priority_date.asc().nullslast(), ReviewItem.created_at.desc())
-    return [S.review_item(r) for r in db.execute(q).scalars()]
+    cal, today = project_calendar(p), date.today()
+    return [_with_remaining(S.review_item(r), r, cal, today) for r in db.execute(q).scalars()]
+
+
+def _with_remaining(out: dict, r: ReviewItem, cal, today: date) -> dict:
+    """Working days left to the earliest notice deadline (computed by the deadline engine, negative when overdue)."""
+    out["working_days_remaining"] = working_days_remaining(r.priority_date, today, cal) if r.priority_date else None
+    return out
 
 
 @router.get("/review/{review_id}")
 def get_review(review_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
     r = owned(db.get(ReviewItem, review_id), user, db)
-    out = S.review_item(r)
+    out = _with_remaining(S.review_item(r), r, project_calendar(db.get(Project, r.project_id)), date.today())
     if r.draft_id:
         out["draft"] = S.draft(db.get(Draft, r.draft_id))
     if r.event_id:

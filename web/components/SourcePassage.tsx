@@ -33,18 +33,18 @@ export function SourcePassage({ citation, projectId, context = 220 }: { citation
   const start = citation.char_start;
   const end = citation.char_end;
   return (
-    <div className="card overflow-hidden">
-      <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-2 py-1">
-        <span className="text-2xs font-semibold text-slate-600">
+    <div className="overflow-hidden rounded-md ring-1 ring-neutral-200">
+      <div className="flex items-center justify-between border-b border-neutral-100 bg-neutral-50 px-2 py-1">
+        <span className="text-[11px] text-neutral-500">
           {citation.label ?? "Source"}
           {citation.clause_ref ? ` · clause ${citation.clause_ref}` : ""}
           {doc ? ` · ${doc.filename}` : ""}
         </span>
-        <Link className="text-2xs text-sky-700 hover:underline" href={`/projects/${projectId}/documents/${citation.document_id}?hl=${start}-${end}`}>
+        <Link className="text-[11px] text-neutral-500 underline underline-offset-2 hover:text-neutral-900" href={`/projects/${projectId}/documents/${citation.document_id}?hl=${start}-${end}`}>
           open source ↗
         </Link>
       </div>
-      <div ref={boxRef} className="relative max-h-48 overflow-auto whitespace-pre-wrap px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-slate-700">
+      <div ref={boxRef} className="relative max-h-48 overflow-auto whitespace-pre-wrap px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-neutral-600">
         {doc ? (
           <>
             {start - context > 0 ? "…" : ""}
