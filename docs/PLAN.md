@@ -94,3 +94,22 @@ Phases 2–4 add agents as new packages under `notice/agents/` using the same ba
 - Auth is email/password + JWT in localStorage (no magic link, password reset or roles beyond admin/member).
 - Docker images are defined and `docker compose config` validates, but they were not built here (no Docker daemon).
 - Inbound email/WhatsApp connectors are not built; ingestion is by upload.
+
+## 5. Phase 2: Revision agent and Claims agent
+
+**Design**
+- Revision agent: the change list is deterministic (register diff keyed by drawing number; text diff over numbered or labelled units). The model only assesses impact. Cross-references to existing events and documents are computed in code. "Raise potential variation" reuses the Notice agent's `open_event()` (deadline from the drawing issue date, approved change-notice rule, draft notice, review item). A shared identifier attaches the change to the existing event instead of duplicating it.
+- Claims agent: evidence gathering, ordering by record date and notice compliance (in time / late / not given / open, time-bar risk) are code. The model selects and annotates timeline entries and drafts the narrative with quantum placeholders. All quotes are verified.
+- New tables: `revision_comparisons`, `claims` (migration 0002). New review item kinds: `revision_comparison`, `claim_draft`.
+
+**Works end to end (offline provider)**
+- Seed: 3 revision pairs compared automatically (11 register changes, 6 spec clause changes, 4 drawing changes). The P3 drawing's "coordination update" note is flagged as understated. Claim CL-001 for the B4-B6 ground conditions: 7 verified timeline entries, 4 notice clocks all "not given" with time-bar risk.
+- UI: Revisions page (comparisons, suggested pairs, manual compare), change table with word diff, assessment, register cross-references and side-by-side passages, Raise / Attach. Event register multi-select → Draft claim. Claims page. Claim review with compliance table, timeline with source passages, quantum and risks, editable draft, export.
+- Tests: 93 backend tests (14 new: diff, compliance, timeline verification, API flows for auto-compare, hand-off, attach vs new, claims, tenancy).
+- Revision eval (`evals/revision_agent`): offline baseline detects 21/21 labelled changes, with potential-variation precision/recall 1.00/1.00 and downplaying flags 3/3.
+
+**Caveats**
+- The revision eval has 21 labelled changes (3 negatives) written alongside the baseline: it is a smoke test, not a quality measure. There is no claims eval yet; claims quality needs expert review on real claims.
+- Lexical similarity misses some links: the sprinkler spec revision is not linked to the tank-room events, which share no identifiers. The Claude path could propose related events; not yet built.
+- The register diff shows that a drawing was revised, not what changed on it, unless both drawing revisions are uploaded.
+- The Claude prompts for both agents are written, but nothing has been run against the live API in this environment.

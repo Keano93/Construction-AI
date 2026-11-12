@@ -7,8 +7,9 @@ contractors money: spotting changes and delays, starting the contractual clock, 
 **Agents draft, humans approve.** Nothing is sent from Notice. Every output cites the exact passage it relied on.
 Deadlines are calculated by code, never by the model.
 
-> Status: **Phase 1** (core platform + Notice agent) is built. Revision, Claims, Valuation, Compliance, Tender and
-> Bid levelling agents are planned (see [docs/PLAN.md](docs/PLAN.md)); their demo data is already generated.
+> Status: **Phase 1** (core platform + Notice agent) and **Phase 2** (Revision agent, Claims agent) are built.
+> Valuation, Compliance, Tender and Bid levelling agents are planned (see [docs/PLAN.md](docs/PLAN.md)); their demo
+> data is already generated.
 
 ---
 
@@ -49,6 +50,7 @@ cd backend
 pytest -q                                              # deadline engine, units, full API flow (needs notice_test DB)
 python ../evals/notice_agent/run_eval.py               # offline baseline
 python ../evals/notice_agent/run_eval.py --provider claude   # needs ANTHROPIC_API_KEY
+python ../evals/revision_agent/run_eval.py             # change detection + potential-variation flags
 ```
 
 ### LLM provider
@@ -83,7 +85,9 @@ flowchart LR
   end
   subgraph Agents
     NA[Notice agent]
-    P[Planned: Revision, Claims,<br/>Valuation, Compliance,<br/>Tender, Bid levelling]
+    RA[Revision agent<br/>diff by code, impact by model]
+    CA[Claims agent<br/>timeline + compliance + narrative]
+    P[Planned: Valuation, Compliance,<br/>Tender, Bid levelling]
   end
   LLM[(Claude API<br/>the only external call)]
   R[Review queue<br/>edit / approve / dismiss]
@@ -97,6 +101,13 @@ flowchart LR
   NA -->|approved rules, retrieval| D
   NA -->|trigger date + rule| DE --> NA
   NA -->|flag + draft + citations| R --> X
+  I -->|new revision| Q --> RA
+  RA <-->|structured output| LLM
+  RA -->|comparison| R
+  R -->|raise potential variation| NA
+  R -->|selected events| CA
+  CA <-->|structured output| LLM
+  CA -->|claim draft| R
   NA --> L
   R --> AU
   C --> AU
@@ -118,6 +129,38 @@ flowchart LR
 6. **Review item** in the inbox: category, confidence (amber if below `NOTICE_LOW_CONFIDENCE_THRESHOLD`), triggering
    passage, clause passage, deadlines with trace, editable draft. Approve → export DOCX/PDF → mark issued (stops the clock).
 
+### Revision agent
+
+1. **Pair**: a newly uploaded drawing register, specification or drawing is matched to its previous revision by
+   filename with revision markers removed (`Drawing Register Rev A/B`, `RA-ARC-204 Rev P2/P3`) and compared
+   automatically; any two documents can also be compared from **Revisions**.
+2. **Diff in code** (`agents/revision_agent/diff.py`): registers are keyed by drawing number (added, removed, revised,
+   modified fields); specs and drawing notes are split into numbered or labelled units (PDF line wraps re-joined),
+   aligned by number, label, then similarity, with a word-level diff. The model never decides what changed.
+3. **Cross-reference in code**: each change is matched to events already on the register by shared identifier
+   (drawing number, grid reference, RFI) or, as a weaker hint, lexical similarity; and to other documents with the
+   same drawing number.
+4. **Assess** (`prompts/revision_agent/assess_changes.v1.md`): type, cost and time impact, packages, potential
+   variation, and "understated revision" flags (e.g. "coordination update" that upgrades glazing). Quotes are
+   verified against the old/new passage.
+5. **Raise potential variation** hands the change to the Notice agent: the deadline runs from the drawing's issue
+   date in the register (or the date the revision was received), the clause is the approved change-notice rule, and
+   a draft notice goes to the review queue. A change sharing an identifier with an existing event is attached to it
+   as evidence instead (the user can raise it as new anyway).
+
+### Claims agent
+
+1. **Gather evidence in code**: messages linked to the selected events, retrieval on the event descriptions, and
+   messages sharing identifiers, within a date window (max 40 items).
+2. **Timeline** (`prompts/claims_agent/timeline.v1.md`): the model selects and annotates relevant records (cause,
+   effect, instruction, notice, response, mitigation, record) and lists missing records. Quotes are verified and
+   entries are ordered by each record's own timestamp; the model's dates are never used.
+3. **Notice compliance in code**: for every clock on the events, in time / late / not given / still open, with
+   time-bar risk where the clause is a condition precedent.
+4. **Narrative** (`prompts/claims_agent/narrative.v1.md`): entitlement, notice position (as computed), cause,
+   effect, quantum heads with `EUR [to be quantified]` placeholders, risks. Citations verified.
+5. A claim draft (DOCX/PDF export once approved) and a review item with the timeline passages.
+
 ### Repository layout
 
 ```
@@ -125,7 +168,8 @@ backend/notice/
   ingestion/     extractors (pdf, docx, xlsx, eml, msg, whatsapp, diary, OCR) and ingest service
   contract/      clause splitter, extraction schemas, offline extractor, approval workflow
   deadlines/     calendar + engine (pure, unit-tested)
-  agents/        base contract (run_task + tools), citations, registry, notice_agent/
+  agents/        base contract (run_task + tools), citations, identifiers, registry,
+                 notice_agent/, revision_agent/, claims_agent/
   review/        review queue actions; every action logged with before/after
   record/        project log + hash-chained audit log
   llm/           prompt loader, ClaudeProvider, OfflineProvider
@@ -145,7 +189,9 @@ docs/PLAN.md     repo structure, data model, phase plan
 
 `organisations → users`, `projects → parties, project_shutdowns`. Source material: `documents` (immutable, content
 hash unique per project) → `items` (atomic messages with character offsets) → `chunks` (pgvector embeddings).
-Contract: `contracts → contract_clauses, contract_rules` (proposed → approved/rejected). Record: `events`,
+Contract: `contracts → contract_clauses, contract_rules` (proposed → approved/rejected). Phase 2:
+`revision_comparisons` (changes with spans, assessments, cross-references, raised events) and `claims` (timeline,
+notice compliance, narrative). Record: `events`,
 `deadlines` (with computation trace), `drafts`, `agent_runs`, `review_items`, `review_actions`, `project_log`,
 `audit_log`, `jobs`. Full table in [docs/PLAN.md](docs/PLAN.md).
 
@@ -194,10 +240,12 @@ All companies and people are invented; email addresses use the reserved `.exampl
   excluded from Working Days)
 * 62 emails and WhatsApp messages and 14 site diary entries (Aug–Nov 2026) hiding changes, delays, oral and
   third-party instructions and disruption, each labelled for the eval
-* Drawing register Rev A/B, spec section Rev 01/02, drawing RA-ARC-204 P2/P3 (for the Revision agent)
+* Drawing register Rev A/B, spec section Rev 01/02, drawing RA-ARC-204 P2/P3 (compared by the Revision agent on
+  load; the P3 drawing calls itself a "coordination update" while upgrading the W07 glazing)
 * Three M&E quotes in PDF, DOCX and XLSX (for Bid levelling)
 * Five subcontractors with mixed RCT, insurance, Safe Pass and RAMS status (for Compliance)
 
 The demo correspondence runs from August, so most of its notice deadlines show as overdue today: that is what
 Notice would surface when a live project's history is first loaded. The seed approves the notice-type rules as the
-demo user and leaves the payment and retention rules for you to review in **Contract rules**.
+demo user and leaves the payment and retention rules for you to review in **Contract rules**. It also drafts one
+claim (CL-001, the B4-B6 ground conditions), which shows the time-bar risk of notices that were never given.

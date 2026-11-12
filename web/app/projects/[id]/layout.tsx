@@ -11,6 +11,8 @@ const NAV = [
   ["/inbox", "Review queue"],
   ["/deadlines", "Deadlines"],
   ["/events", "Event register"],
+  ["/revisions", "Revisions"],
+  ["/claims", "Claims"],
   ["/contract", "Contract rules"],
   ["/documents", "Documents"],
   ["/audit", "Audit log"],

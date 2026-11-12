@@ -7,6 +7,7 @@ import { fmtDate, fmtDateTime } from "@/lib/format";
 import { CategoryBadge, Confidence, DaysLeft, Empty, ErrorBox, StatusPill } from "@/components/ui";
 import { SourcePassage } from "@/components/SourcePassage";
 import { useProject } from "@/components/project-context";
+import { ClaimBody, RevisionBody } from "@/components/review-kinds";
 
 const CATS = ["", "change", "delay", "instruction", "disruption", "noise"];
 
@@ -55,12 +56,14 @@ function Inbox() {
               className={`block w-full border-b border-slate-100 px-2.5 py-2 text-left ${selected === it.id ? "bg-sky-50" : "hover:bg-slate-50"} ${it.low_confidence ? "border-l-2 border-l-amber-400" : "border-l-2 border-l-transparent"}`}>
               <div className="flex items-center gap-1.5">
                 <CategoryBadge category={it.category} />
-                <span className="text-2xs text-slate-400">{it.payload?.event_ref}</span>
+                <span className="text-2xs text-slate-400">{it.payload?.event_ref ?? it.payload?.claim_ref ?? (it.kind === "revision_comparison" ? "revision" : "")}</span>
                 <span className="ml-auto"><Confidence value={it.confidence} low={it.low_confidence} /></span>
               </div>
               <div className="mt-1 line-clamp-2 text-xs font-medium leading-snug">{it.title}</div>
               <div className="mt-0.5 flex justify-between text-2xs text-slate-500">
-                <span>{it.payload?.source?.channel} · {fmtDate(it.payload?.source?.timestamp)}</span>
+                <span>{it.kind === "revision_comparison" ? `${it.payload.counts.potential_variations} potential variation(s), ${it.payload.counts.not_on_register} not on register`
+                  : it.kind === "claim_draft" ? `claim · ${it.payload.timeline.length} timeline entries${it.payload.time_bar_risk ? " · time-bar risk" : ""}`
+                  : `${it.payload?.source?.channel} · ${fmtDate(it.payload?.source?.timestamp)}`}</span>
                 {it.priority_date && <span>notice due <b className="text-slate-700">{fmtDate(it.priority_date)}</b></span>}
               </div>
             </button>
@@ -116,6 +119,44 @@ function Detail({ reviewId, projectId, onChange }: { reviewId: string; projectId
   };
   const issues: string[] = r.payload?.verification?.issues ?? [];
   const cls = r.payload?.classification;
+  const draftPanel = (
+        <div className="space-y-2">
+      <h3 className="label">{r.kind === "claim_draft" ? "Draft claim" : r.kind === "revision_comparison" ? "Review" : "Draft notice"} {r.draft ? `· v${r.draft.version} · ${r.draft.status}` : ""}</h3>
+      {r.draft ? (
+        <div className="card space-y-2 p-2">
+          <label className="block space-y-0.5"><span className="label">To</span><input className="input" value={draft.recipient} disabled={!pending} onChange={(e) => setDraft({ ...draft, recipient: e.target.value })} /></label>
+          <label className="block space-y-0.5"><span className="label">Subject</span><input className="input font-medium" value={draft.subject} disabled={!pending} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} /></label>
+          <textarea className="input h-[420px] font-serif text-[12.5px] leading-relaxed" value={draft.body} disabled={!pending} onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
+        </div>
+      ) : r.kind === "revision_comparison" ? null : <Empty>No draft for this item.</Empty>}
+
+      <input className="input" placeholder="Comment (logged with your decision)" value={comment} onChange={(e) => setComment(e.target.value)} />
+      <div className="flex flex-wrap gap-1.5">
+        {pending && (
+          <>
+            <button className="btn-primary" disabled={busy} onClick={approve}>{r.draft ? "Approve draft" : r.kind === "revision_comparison" ? "Mark reviewed" : "Confirm"}</button>
+            <button className="btn" disabled={busy || (!dirty && !triggerDirty)} onClick={save}>Save edits</button>
+            <button className="btn-danger" disabled={busy} onClick={() => act("dismiss")}>Dismiss</button>
+          </>
+        )}
+        {!pending && <button className="btn" disabled={busy} onClick={() => act("reopen")}>Reopen</button>}
+        {r.status === "approved" && r.draft && (
+          <>
+            <button className="btn" onClick={() => download(`/drafts/${r.draft!.id}/export?format=docx`, `${r.draft!.subject}.docx`).catch((e) => setError(e.message))}>Export DOCX</button>
+            <button className="btn" onClick={() => download(`/drafts/${r.draft!.id}/export?format=pdf`, `${r.draft!.subject}.pdf`).catch((e) => setError(e.message))}>Export PDF</button>
+            {r.event?.status !== "notified" && <button className="btn" disabled={busy} onClick={() => act("mark-issued", { issued_on: new Date().toISOString().slice(0, 10) })}>Mark as issued today</button>}
+          </>
+        )}
+      </div>
+      <p className="text-2xs text-slate-500">Notice never sends anything. Export the approved draft and send it from your own email, then mark it issued to stop the clock.</p>
+      {(r.actions?.length ?? 0) > 0 && (
+        <div className="text-2xs text-slate-500">
+          <div className="label">History</div>
+          {r.actions!.map((a, i) => <div key={i}>{fmtDateTime(a.created_at)} · {a.action}{a.comment ? ` — ${a.comment}` : ""}</div>)}
+        </div>
+      )}
+    </div>
+  );
   const msgCites = r.citations.filter((c) => !c.clause_ref);
   const clauseCites = r.citations.filter((c) => c.clause_ref);
 
@@ -136,7 +177,10 @@ function Detail({ reviewId, projectId, onChange }: { reviewId: string; projectId
 
       {r.low_confidence && (
         <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          <b>Low confidence.</b> Check the classification, the linked clause and the awareness date against the source before approving.
+          <b>Low confidence.</b>{" "}
+          {r.kind === "revision_comparison" ? "Check each assessed change against the drawings before raising or dismissing it."
+            : r.kind === "claim_draft" ? "The record behind this claim is thin or partly unverified. Check the timeline and add records before relying on it."
+            : "Check the classification, the linked clause and the awareness date against the source before approving."}
           {issues.length > 0 && <ul className="mt-1 list-disc pl-4 text-2xs">{issues.map((x, i) => <li key={i}>{x}</li>)}</ul>}
         </div>
       )}
@@ -145,8 +189,18 @@ function Detail({ reviewId, projectId, onChange }: { reviewId: string; projectId
       )}
       <ErrorBox error={error} />
 
+      {r.kind === "revision_comparison" ? (
+        <>
+          <RevisionBody r={r} projectId={projectId} onRaised={() => { api<ReviewItemT>(`/review/${reviewId}`).then(apply); onChange(); }} />
+          <div className="max-w-2xl">{draftPanel}</div>
+        </>
+      ) : r.kind === "claim_draft" ? (
+        <>
+          <ClaimBody r={r} projectId={projectId} />
+          <div>{draftPanel}</div>
+        </>
+      ) : (
       <div className="grid gap-3 xl:grid-cols-2">
-        {/* left: evidence */}
         <div className="space-y-3">
           <section className="space-y-1.5">
             <h3 className="label">Triggering message</h3>
@@ -197,44 +251,9 @@ function Detail({ reviewId, projectId, onChange }: { reviewId: string; projectId
           </section>
         </div>
 
-        {/* right: draft */}
-        <div className="space-y-2">
-          <h3 className="label">Draft notice {r.draft ? `· v${r.draft.version} · ${r.draft.status}` : ""}</h3>
-          {r.draft ? (
-            <div className="card space-y-2 p-2">
-              <label className="block space-y-0.5"><span className="label">To</span><input className="input" value={draft.recipient} disabled={!pending} onChange={(e) => setDraft({ ...draft, recipient: e.target.value })} /></label>
-              <label className="block space-y-0.5"><span className="label">Subject</span><input className="input font-medium" value={draft.subject} disabled={!pending} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} /></label>
-              <textarea className="input h-[420px] font-serif text-[12.5px] leading-relaxed" value={draft.body} disabled={!pending} onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
-            </div>
-          ) : <Empty>No draft for this item.</Empty>}
-
-          <input className="input" placeholder="Comment (logged with your decision)" value={comment} onChange={(e) => setComment(e.target.value)} />
-          <div className="flex flex-wrap gap-1.5">
-            {pending && (
-              <>
-                <button className="btn-primary" disabled={busy} onClick={approve}>{r.draft ? "Approve draft" : "Confirm"}</button>
-                <button className="btn" disabled={busy || (!dirty && !triggerDirty)} onClick={save}>Save edits</button>
-                <button className="btn-danger" disabled={busy} onClick={() => act("dismiss")}>Dismiss</button>
-              </>
-            )}
-            {!pending && <button className="btn" disabled={busy} onClick={() => act("reopen")}>Reopen</button>}
-            {r.status === "approved" && r.draft && (
-              <>
-                <button className="btn" onClick={() => download(`/drafts/${r.draft!.id}/export?format=docx`, `${r.draft!.subject}.docx`).catch((e) => setError(e.message))}>Export DOCX</button>
-                <button className="btn" onClick={() => download(`/drafts/${r.draft!.id}/export?format=pdf`, `${r.draft!.subject}.pdf`).catch((e) => setError(e.message))}>Export PDF</button>
-                {r.event?.status !== "notified" && <button className="btn" disabled={busy} onClick={() => act("mark-issued", { issued_on: new Date().toISOString().slice(0, 10) })}>Mark as issued today</button>}
-              </>
-            )}
-          </div>
-          <p className="text-2xs text-slate-500">Notice never sends anything. Export the approved draft and send it from your own email, then mark it issued to stop the clock.</p>
-          {(r.actions?.length ?? 0) > 0 && (
-            <div className="text-2xs text-slate-500">
-              <div className="label">History</div>
-              {r.actions!.map((a, i) => <div key={i}>{fmtDateTime(a.created_at)} · {a.action}{a.comment ? ` — ${a.comment}` : ""}</div>)}
-            </div>
-          )}
-        </div>
+        {draftPanel}
       </div>
+      )}
     </div>
   );
 }
