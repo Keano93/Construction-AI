@@ -14,10 +14,14 @@ export function period(value: number | null, unit: string | null): string {
   return `${value} ${unit.replace("_", " ")}`;
 }
 
-export const CATEGORY_STYLE: Record<string, string> = {
-  change: "bg-violet-50 text-violet-800 border-violet-200",
-  delay: "bg-orange-50 text-orange-800 border-orange-200",
-  instruction: "bg-sky-50 text-sky-800 border-sky-200",
-  disruption: "bg-rose-50 text-rose-800 border-rose-200",
-  noise: "bg-slate-50 text-slate-600 border-slate-200",
-};
+/** Plain-English notice compliance line from the claims agent's computed state. */
+export function complianceText(c: { state: string; due_date: string; met_on?: string | null }): string {
+  switch (c.state) {
+    case "given_in_time": return `Given in time on ${fmtDate(c.met_on)}`;
+    case "given_late": return `Given late on ${fmtDate(c.met_on)} — was due ${fmtDate(c.due_date)}`;
+    case "not_given_overdue": return `Not given — was due ${fmtDate(c.due_date)}`;
+    case "not_given_open": return `Not given yet — due ${fmtDate(c.due_date)}`;
+    case "cancelled": return "Clock cancelled";
+    default: return fmtDate(c.due_date);
+  }
+}

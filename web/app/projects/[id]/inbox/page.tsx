@@ -10,6 +10,24 @@ import { DuePhrase, HighlightedText, Margin, Note, Section, sourceLabel, urgent 
 import { claimNotes, noticeNotes, revisionNotes, RevisionChanges } from "@/components/inbox/kinds";
 
 type Row = ReviewItemT & { working_days_remaining: number | null };
+type Show = "all" | "overdue" | "week" | "later" | "none" | "check";
+
+const SHOW: [Show, string][] = [
+  ["all", "Everything"], ["overdue", "Overdue"], ["week", "Due in 5 working days"], ["later", "Due later"],
+  ["none", "No deadline"], ["check", "Needs checking"],
+];
+
+function matches(r: Row, show: Show) {
+  const wd = r.working_days_remaining;
+  switch (show) {
+    case "overdue": return wd !== null && wd < 0;
+    case "week": return wd !== null && wd >= 0 && wd <= 5;
+    case "later": return wd !== null && wd > 5;
+    case "none": return wd === null;
+    case "check": return r.low_confidence;
+    default: return true;
+  }
+}
 
 function listTitle(r: Row, project?: string) {
   if (r.kind === "revision_comparison") {
@@ -27,6 +45,7 @@ function Inbox() {
   const { project, reload: reloadProject } = useProject();
   const [status, setStatus] = useState("pending");
   const [items, setItems] = useState<Row[] | null>(null);
+  const [show, setShow] = useState<Show>("all");
   const selected = params.get("item");
 
   const select = useCallback((itemId: string | null) => {
@@ -41,9 +60,10 @@ function Inbox() {
   }, [id, status, selected, select]);
   useEffect(load, [id, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const index = items?.findIndex((x) => x.id === selected) ?? -1;
-  const next = () => items && items.length && select(items[Math.min(index + 1, items.length - 1)].id);
-  const prev = () => items && items.length && select(items[Math.max(index - 1, 0)].id);
+  const visible = useMemo(() => items?.filter((x) => matches(x, show)) ?? null, [items, show]);
+  const index = visible?.findIndex((x) => x.id === selected) ?? -1;
+  const next = () => visible && visible.length && select(visible[Math.min(index + 1, visible.length - 1)].id);
+  const prev = () => visible && visible.length && select(visible[Math.max(index - 1, 0)].id);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -58,16 +78,22 @@ function Inbox() {
   return (
     <div className="flex h-screen bg-neutral-50">
       <section className="flex w-[320px] shrink-0 flex-col border-r border-neutral-200 bg-white">
-        <div className="flex items-center justify-between px-4 pb-2 pt-5">
+        <div className="flex items-center justify-between px-4 pt-5">
           <h1 className="text-[15px] font-semibold text-neutral-900">To review</h1>
           <select className="rounded border-0 bg-transparent text-xs text-neutral-500 focus:ring-0" value={status} onChange={(e) => { setStatus(e.target.value); select(null); }}>
             <option value="pending">Pending</option><option value="approved">Approved</option><option value="dismissed">Dismissed</option><option value="all">All</option>
           </select>
         </div>
+        <div className="flex items-center gap-1 px-4 pb-2 text-xs text-neutral-400">
+          Show
+          <select aria-label="Filter by due date" className="rounded border-0 bg-transparent py-0 pl-1 text-xs text-neutral-700 focus:ring-0" value={show} onChange={(e) => setShow(e.target.value as Show)}>
+            {SHOW.map(([v, t]) => <option key={v} value={v}>{t}{items ? ` (${items.filter((x) => matches(x, v)).length})` : ""}</option>)}
+          </select>
+        </div>
         <div className="flex-1 overflow-auto px-2 pb-4">
-          {items === null ? <p className="p-4 text-sm text-neutral-400">Loading…</p> : items.length === 0 ? (
-            <p className="p-4 text-sm text-neutral-400">Nothing to review.</p>
-          ) : items.map((it) => (
+          {visible === null ? <p className="p-4 text-sm text-neutral-400">Loading…</p> : visible.length === 0 ? (
+            <p className="p-4 text-sm text-neutral-400">{items?.length ? "Nothing matches this filter." : "Nothing to review."}</p>
+          ) : visible.map((it) => (
             <button key={it.id} onClick={() => select(it.id)}
               className={`block w-full rounded-md px-3 py-2.5 text-left ${selected === it.id ? "bg-neutral-100" : "hover:bg-neutral-50"}`}>
               <div className="flex items-start gap-2">
@@ -84,7 +110,7 @@ function Inbox() {
       </section>
       <section className="min-w-0 flex-1 overflow-auto">
         {selected ? <Detail key={selected} reviewId={selected} projectId={id} projectName={project?.name}
-          onChange={() => { load(); reloadProject(); }} onNext={index < (items?.length ?? 0) - 1 ? next : undefined} />
+          onChange={() => { load(); reloadProject(); }} onNext={index >= 0 && index < (visible?.length ?? 0) - 1 ? next : undefined} />
           : <p className="p-10 text-sm text-neutral-400">Select an item.</p>}
       </section>
     </div>

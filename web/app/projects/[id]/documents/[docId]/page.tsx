@@ -28,11 +28,11 @@ function Viewer() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-base font-semibold">{doc.filename}</h1>
-          <p className="text-2xs text-slate-500">{doc.kind} · {doc.author ?? "unknown author"} · {fmtDateTime(doc.doc_timestamp)} · extracted by {doc.extraction_method} · {doc.item_list.length} item(s) · sha256 {doc.sha256}</p>
+          <p className="text-2xs text-neutral-500">{doc.kind} · {doc.author ?? "unknown author"} · {fmtDateTime(doc.doc_timestamp)} · extracted by {doc.extraction_method} · {doc.item_list.length} item(s) · sha256 {doc.sha256}</p>
         </div>
         <button className="btn" onClick={() => download(`/documents/${doc.id}/file`, doc.filename)}>Download original</button>
       </div>
-      <div className="card whitespace-pre-wrap p-3 font-mono text-[12px] leading-relaxed text-slate-800">
+      <div className="card whitespace-pre-wrap p-3 font-mono text-[12px] leading-relaxed text-neutral-800">
         {valid ? (
           <>
             {doc.text.slice(0, s)}

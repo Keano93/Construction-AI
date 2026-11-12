@@ -41,8 +41,8 @@ export default function Projects() {
             <thead><tr><th className="th">Project</th><th className="th">Location</th><th className="th">Contract</th></tr></thead>
             <tbody>
               {projects.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50">
-                  <td className="td"><Link className="font-medium text-sky-800 hover:underline" href={`/projects/${p.id}/inbox`}>{p.name}</Link> <span className="text-slate-400">{p.code}</span></td>
+                <tr key={p.id} className="hover:bg-neutral-50">
+                  <td className="td"><Link className="font-medium text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:underline" href={`/projects/${p.id}/inbox`}>{p.name}</Link> <span className="text-neutral-400">{p.code}</span></td>
                   <td className="td">{p.location}</td>
                   <td className="td">{p.contract_form}</td>
                 </tr>

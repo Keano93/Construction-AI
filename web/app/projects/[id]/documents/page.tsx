@@ -63,7 +63,7 @@ export default function Documents() {
         <label className="space-y-0.5"><span className="label">Type</span>
           <select className="input" value={uploadKind} onChange={(e) => setUploadKind(e.target.value)}>{KINDS.map((k) => <option key={k} value={k}>{k || "auto-detect"}</option>)}</select></label>
         <button className="btn-primary" disabled={busy}>{busy ? "Uploading…" : "Upload"}</button>
-        {msg && <span className="text-xs text-emerald-700">{msg}</span>}
+        {msg && <span className="text-xs text-neutral-600">{msg}</span>}
       </form>
       <ErrorBox error={error} />
       <div className="flex justify-end">
@@ -75,14 +75,14 @@ export default function Documents() {
             <thead><tr><th className="th">Document</th><th className="th">Type</th><th className="th">Author</th><th className="th">Dated</th><th className="th">Items</th><th className="th">Extraction</th><th className="th">SHA-256</th></tr></thead>
             <tbody>
               {docs.map((d) => (
-                <tr key={d.id} className="hover:bg-slate-50">
-                  <td className="td"><Link className="font-medium text-sky-800 hover:underline" href={`/projects/${id}/documents/${d.id}`}>{d.filename}</Link></td>
+                <tr key={d.id} className="hover:bg-neutral-50">
+                  <td className="td"><Link className="font-medium text-neutral-900 underline decoration-neutral-300 underline-offset-2 hover:underline" href={`/projects/${id}/documents/${d.id}`}>{d.filename}</Link></td>
                   <td className="td">{d.kind}</td>
                   <td className="td truncate">{d.author ?? "—"}</td>
                   <td className="td whitespace-nowrap">{fmtDateTime(d.doc_timestamp)}</td>
                   <td className="td text-center">{d.items}</td>
                   <td className="td">{d.extraction_method}</td>
-                  <td className="td font-mono text-2xs text-slate-400" title={d.sha256}>{d.sha256.slice(0, 12)}</td>
+                  <td className="td font-mono text-2xs text-neutral-400" title={d.sha256}>{d.sha256.slice(0, 12)}</td>
                 </tr>
               ))}
             </tbody>

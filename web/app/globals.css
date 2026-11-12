@@ -2,17 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body { @apply bg-slate-50 text-slate-900 antialiased; }
+html, body { @apply bg-neutral-50 text-neutral-900 antialiased; }
 body { font-size: 13px; }
 
 @layer components {
-  .btn { @apply inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed; }
-  .btn-primary { @apply btn border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800; }
-  .btn-danger { @apply btn border-rose-300 text-rose-700 hover:bg-rose-50; }
-  .input { @apply w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-slate-500 focus:outline-none; }
-  .card { @apply rounded border border-slate-200 bg-white; }
-  .th { @apply border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-left text-2xs font-semibold uppercase tracking-wide text-slate-500; }
-  .td { @apply border-b border-slate-100 px-2 py-1.5 align-top; }
-  .label { @apply text-2xs font-semibold uppercase tracking-wide text-slate-500; }
+  .btn { @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] text-neutral-700 ring-1 ring-neutral-200 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-primary { @apply inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-danger { @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] text-neutral-500 hover:text-neutral-900 disabled:opacity-50; }
+  .link { @apply underline decoration-neutral-300 underline-offset-2 hover:decoration-neutral-600; }
+  .input { @apply w-full rounded-md border border-neutral-200 bg-white px-2 py-1 text-[13px] focus:border-neutral-400 focus:outline-none; }
+  .card { @apply rounded-lg bg-white ring-1 ring-neutral-200; }
+  .th { @apply px-3 py-2 text-left text-xs font-normal text-neutral-400; }
+  .td { @apply border-t border-neutral-100 px-3 py-2.5 align-top text-[13.5px] text-neutral-800; }
+  .label { @apply text-xs text-neutral-400; }
   mark.cite { @apply rounded-sm bg-neutral-200 px-0.5 text-neutral-900; }
 }

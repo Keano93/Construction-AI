@@ -245,7 +245,14 @@ def reextract(contract_id: uuid.UUID, user: User = Depends(current_user), db: Se
 def list_events(project_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p = project_for(project_id, user, db)
     events = db.execute(select(Event).where(Event.project_id == p.id).order_by(Event.trigger_date.desc())).scalars()
-    return [S.event(e) | {"deadlines": [S.deadline(d) for d in e.deadlines]} for e in events]
+    review = {eid: rid for eid, rid in db.execute(
+        select(ReviewItem.event_id, ReviewItem.id).where(ReviewItem.project_id == p.id, ReviewItem.kind == "notice_flag"))}
+    cal, today = project_calendar(p), date.today()
+    out = []
+    for e in events:
+        dls = [S.deadline(d, remaining=working_days_remaining(d.due_date, today, cal)) for d in e.deadlines]
+        out.append(S.event(e) | {"deadlines": dls, "review_item_id": str(review[e.id]) if e.id in review else None})
+    return out
 
 
 @router.get("/projects/{project_id}/deadlines")

@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api, Citation, ReviewItemT } from "@/lib/api";
-import { fmtDate } from "@/lib/format";
+import { complianceText, fmtDate } from "@/lib/format";
 import { Note, sourceLabel } from "./doc";
 
 // ---------- notice ----------
@@ -71,7 +71,7 @@ export function claimNotes(r: ReviewItemT): Note[] {
         {claim.notice_compliance.map((c: any, i: number) => (
           <li key={i}>
             <span className="font-medium">{c.event_ref} · clause {c.clause_ref}</span> {c.title}
-            <div className={c.time_bar_risk ? "text-red-600" : "text-neutral-500"}>{c.text}</div>
+            <div className={c.time_bar_risk ? "text-red-600" : "text-neutral-500"}>{complianceText(c)}</div>
           </li>
         ))}
       </ul>

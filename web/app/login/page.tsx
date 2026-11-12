@@ -34,7 +34,7 @@ export default function Login() {
       <form onSubmit={submit} className="card w-full max-w-sm space-y-3 p-5">
         <div>
           <h1 className="text-lg font-semibold">Notice</h1>
-          <p className="text-xs text-slate-500">Commercial assistant for contractors. Agents draft, humans approve.</p>
+          <p className="text-xs text-neutral-500">Commercial assistant for contractors. Agents draft, humans approve.</p>
         </div>
         {mode === "register" && (
           <>
@@ -46,10 +46,10 @@ export default function Login() {
         <label className="block space-y-1"><span className="label">Password</span><input className="input" type="password" value={form.password} onChange={set("password")} required minLength={8} /></label>
         <ErrorBox error={error} />
         <button className="btn-primary w-full justify-center py-1.5" disabled={busy}>{mode === "login" ? "Sign in" : "Create account"}</button>
-        <button type="button" className="w-full text-center text-2xs text-slate-500 hover:underline" onClick={() => setMode(mode === "login" ? "register" : "login")}>
+        <button type="button" className="w-full text-center text-2xs text-neutral-500 hover:underline" onClick={() => setMode(mode === "login" ? "register" : "login")}>
           {mode === "login" ? "New organisation? Create an account" : "Have an account? Sign in"}
         </button>
-        {mode === "login" && <p className="text-center text-2xs text-slate-400">Demo: demo@brennock.example / riverside-demo</p>}
+        {mode === "login" && <p className="text-center text-2xs text-neutral-400">Demo: demo@brennock.example / riverside-demo</p>}
       </form>
     </main>
   );

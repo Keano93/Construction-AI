@@ -24,10 +24,10 @@ export default function Audit() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-base font-semibold">Audit log</h1>
-          <p className="text-xs text-slate-500">Append-only and hash-chained. Every upload, agent run, approval, edit and export is recorded with its sources.</p>
+          <p className="text-xs text-neutral-500">Append-only and hash-chained. Every upload, agent run, approval, edit and export is recorded with its sources.</p>
         </div>
         {verify && (
-          <span className={`rounded px-2 py-1 text-2xs font-semibold ${verify.ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+          <span className={`rounded px-2 py-1 text-2xs font-semibold ${verify.ok ? "bg-neutral-100 text-neutral-600" : "bg-transparent text-red-600"}`}>
             {verify.ok ? "Hash chain verified" : `Chain broken at entry ${verify.first_bad_id}`}
           </span>
         )}
@@ -41,11 +41,11 @@ export default function Audit() {
               {shown.map((r) => (
                 <tr key={r.id}>
                   <td className="td whitespace-nowrap">{fmtDateTime(r.created_at)}</td>
-                  <td className="td"><span className="text-2xs text-slate-400">{r.actor_type}</span> {r.actor_name}</td>
+                  <td className="td"><span className="text-2xs text-neutral-400">{r.actor_type}</span> {r.actor_name}</td>
                   <td className="td font-medium">{r.action}</td>
-                  <td className="td text-2xs">{r.entity_type} <span className="font-mono text-slate-400">{r.entity_id?.slice(0, 8)}</span></td>
-                  <td className="td max-w-md truncate font-mono text-2xs text-slate-500" title={JSON.stringify(r.details)}>{JSON.stringify(r.details)}</td>
-                  <td className="td font-mono text-2xs text-slate-400">{r.hash.slice(0, 10)}</td>
+                  <td className="td text-2xs">{r.entity_type} <span className="font-mono text-neutral-400">{r.entity_id?.slice(0, 8)}</span></td>
+                  <td className="td max-w-md truncate font-mono text-2xs text-neutral-500" title={JSON.stringify(r.details)}>{JSON.stringify(r.details)}</td>
+                  <td className="td font-mono text-2xs text-neutral-400">{r.hash.slice(0, 10)}</td>
                 </tr>
               ))}
             </tbody>

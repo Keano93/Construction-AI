@@ -5,81 +5,121 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, DeadlineT } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
-import { CategoryBadge, DaysLeft, Empty, ErrorBox, StatusPill } from "@/components/ui";
+import { CATEGORY_LABEL, cleanTitle } from "@/lib/text";
+import { DuePhrase } from "@/components/inbox/doc";
+import { PanelSection, PanelTitle, RegisterLayout, RegisterTable, rowClass, Segments } from "@/components/register";
+import { Empty, ErrorBox } from "@/components/ui";
+import { useProject } from "@/components/project-context";
+
+type Show = "open" | "overdue" | "soon" | "all";
 
 export default function Deadlines() {
   const { id } = useParams<{ id: string }>();
+  const { project } = useProject();
   const [rows, setRows] = useState<DeadlineT[] | null>(null);
-  const [all, setAll] = useState(false);
+  const [show, setShow] = useState<Show>("open");
+  const [selected, setSelected] = useState<string | null>(null);
+  const [calcOpen, setCalcOpen] = useState(false);
+
+  useEffect(() => {
+    api<DeadlineT[]>(`/projects/${id}/deadlines?include_closed=${show === "all"}`).then(setRows);
+  }, [id, show]);
+
+  const shown = (rows ?? []).filter((d) => {
+    const wd = d.working_days_remaining ?? 0;
+    if (show === "overdue") return d.status === "running" && wd < 0;
+    if (show === "soon") return d.status === "running" && wd >= 0 && wd <= 5;
+    return true;
+  });
+  const sel = rows?.find((d) => d.id === selected) ?? null;
+  const close = () => { setSelected(null); setCalcOpen(false); };
+
+  return (
+    <RegisterLayout
+      title="Deadlines"
+      description="Every running notice clock, calculated from the approved contract rules, Irish public holidays, weekends and project shutdowns."
+      actions={<button className="btn" onClick={() => { setSelected(null); setCalcOpen(true); }}>Deadline calculator</button>}
+      filters={<Segments value={show} onChange={setShow} options={[["open", "Open"], ["overdue", "Overdue"], ["soon", "Due in 5 working days"], ["all", "All, including closed"]]} />}
+      panel={sel ? <DeadlinePanel d={sel} projectId={id} projectName={project?.name} /> : calcOpen ? <Calculator projectId={id} /> : undefined}
+      onClose={close}
+    >
+      {rows === null ? <Empty>Loading…</Empty> : shown.length === 0 ? <Empty>Nothing here.</Empty> : (
+        <RegisterTable head={["Due", "Obligation", "Event"]}>
+          {shown.map((d) => (
+            <tr key={d.id} className={rowClass(selected === d.id)} onClick={() => { setCalcOpen(false); setSelected(d.id); }}>
+              <td className="td w-56">
+                <div className="tabular-nums">{fmtDate(d.due_date)}</div>
+                <div className="text-xs">{d.status === "running" ? <DuePhrase due={d.due_date} wd={d.working_days_remaining} /> : <span className="text-neutral-400">{d.status === "met" ? "Notice issued" : "Cancelled"}</span>}</div>
+              </td>
+              <td className="td">{d.label.replace(/^Clause /, "Clause ")}</td>
+              <td className="td">{cleanTitle(d.event?.title ?? "", project?.name)}<div className="text-xs text-neutral-400">{d.event?.ref}</div></td>
+            </tr>
+          ))}
+        </RegisterTable>
+      )}
+    </RegisterLayout>
+  );
+}
+
+function DeadlinePanel({ d, projectId, projectName }: { d: DeadlineT; projectId: string; projectName?: string }) {
+  const hols = d.trace.skipped.filter((s) => !s.reason.startsWith("weekend"));
+  const clause = d.label.match(/^Clause (\S+)/)?.[1];
+  return (
+    <>
+      <PanelTitle kicker={`${CATEGORY_LABEL[d.event?.category ?? ""] ?? "Event"} · ${d.event?.ref}`} title={cleanTitle(d.event?.title ?? "", projectName)} />
+      <PanelSection label="What to do">
+        {d.status === "running" ? (
+          <p>Send a notice under clause {clause} by <b className="font-medium">{fmtDate(d.due_date)}</b>. <span className="text-[13px]"><DuePhrase due={d.due_date} wd={d.working_days_remaining} /></span></p>
+        ) : <p>{d.status === "met" ? "Notice issued — the clock is stopped." : "This clock was cancelled when the event was dismissed."}</p>}
+        {d.condition_precedent && <p className="mt-1 text-neutral-600">This notice is a condition precedent: if it is late, the entitlement can be lost.</p>}
+        {d.review_item_id && <p className="mt-2"><Link className="link" href={`/projects/${projectId}/inbox?item=${d.review_item_id}`}>Open the draft notice in the review queue →</Link></p>}
+      </PanelSection>
+      <PanelSection label="How the date was calculated">
+        <p>{d.trace.explanation}</p>
+        {hols.length > 0 && <p className="mt-1 text-neutral-500">Not counted: {hols.map((s) => `${fmtDate(s.date)} (${s.reason.replace("public holiday: ", "").replace("shutdown: ", "")})`).join(", ")}</p>}
+        <p className="mt-1 text-[13px] text-neutral-400">Worked out by the deadline engine from {d.label}, starting the day after {fmtDate(d.trigger_date)}.</p>
+      </PanelSection>
+    </>
+  );
+}
+
+function Calculator({ projectId }: { projectId: string }) {
   const [calc, setCalc] = useState({ trigger_date: new Date().toISOString().slice(0, 10), period: 10, unit: "working_days" });
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api<DeadlineT[]>(`/projects/${id}/deadlines?include_closed=${all}`).then(setRows);
-  }, [id, all]);
-
-  async function runCalc(e: React.FormEvent) {
+  async function run(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      setResult(await api(`/projects/${id}/deadline-calculator`, { method: "POST", json: calc }));
+      setResult(await api(`/projects/${projectId}/deadline-calculator`, { method: "POST", json: calc }));
     } catch (err: any) {
       setError(err.message);
     }
   }
-
   return (
-    <div className="space-y-4 p-4">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-base font-semibold">Deadlines</h1>
-          <p className="text-xs text-slate-500">Computed deterministically from the approved contract rules, Irish/UK public holidays, weekends and project shutdowns.</p>
-        </div>
-        <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> include met / cancelled</label>
-      </div>
-      <div className="card overflow-hidden">
-        {rows === null ? <Empty>Loading…</Empty> : rows.length === 0 ? <Empty>No deadlines.</Empty> : (
-          <table className="w-full">
-            <thead><tr><th className="th">Due</th><th className="th">Remaining</th><th className="th">Status</th><th className="th">Event</th><th className="th">Obligation</th><th className="th">Calculation</th></tr></thead>
-            <tbody>
-              {rows.map((d) => (
-                <tr key={d.id} className={d.urgency === "overdue" ? "bg-rose-50/50" : ""}>
-                  <td className="td whitespace-nowrap font-semibold tabular-nums">{fmtDate(d.due_date)}</td>
-                  <td className="td whitespace-nowrap"><DaysLeft days={d.working_days_remaining} status={d.status} /></td>
-                  <td className="td"><StatusPill status={d.urgency ?? d.status} /></td>
-                  <td className="td">
-                    <CategoryBadge category={d.event?.category ?? null} />{" "}
-                    {d.review_item_id ? <Link className="text-sky-800 hover:underline" href={`/projects/${id}/inbox?item=${d.review_item_id}`}>{d.event?.ref} {d.event?.title}</Link> : <span>{d.event?.ref} {d.event?.title}</span>}
-                  </td>
-                  <td className="td">{d.label}{d.condition_precedent ? <div className="text-2xs font-semibold text-rose-700">condition precedent</div> : null}</td>
-                  <td className="td text-2xs text-slate-500">{d.trace.explanation}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <form onSubmit={runCalc} className="card space-y-2 p-3">
-        <h2 className="text-xs font-semibold">Deadline calculator (this project&apos;s calendar)</h2>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="space-y-0.5"><span className="label">Trigger date</span><input type="date" className="input" value={calc.trigger_date} onChange={(e) => setCalc({ ...calc, trigger_date: e.target.value })} /></label>
-          <label className="space-y-0.5"><span className="label">Period</span><input type="number" min={0} className="input w-20" value={calc.period} onChange={(e) => setCalc({ ...calc, period: Number(e.target.value) })} /></label>
-          <label className="space-y-0.5"><span className="label">Unit</span>
+    <>
+      <PanelTitle kicker="Tool" title="Deadline calculator"><p className="text-[13.5px] text-neutral-500">Uses this project’s calendar: public holidays, weekends and shutdowns.</p></PanelTitle>
+      <form onSubmit={run} className="space-y-3 border-t border-neutral-100 pt-4">
+        <label className="block space-y-1"><span className="label">Start date (the trigger day is not counted)</span><input type="date" className="input" value={calc.trigger_date} onChange={(e) => setCalc({ ...calc, trigger_date: e.target.value })} /></label>
+        <div className="flex gap-2">
+          <label className="block w-24 space-y-1"><span className="label">Period</span><input type="number" min={0} className="input" value={calc.period} onChange={(e) => setCalc({ ...calc, period: Number(e.target.value) })} /></label>
+          <label className="block flex-1 space-y-1"><span className="label">Unit</span>
             <select className="input" value={calc.unit} onChange={(e) => setCalc({ ...calc, unit: e.target.value })}>
               <option value="working_days">working days</option><option value="calendar_days">calendar days</option><option value="weeks">weeks</option><option value="months">months</option>
             </select></label>
-          <button className="btn-primary">Calculate</button>
         </div>
+        <button className="btn-primary">Calculate</button>
         <ErrorBox error={error} />
-        {result && (
-          <div className="text-xs">
-            <div>Due: <b>{fmtDate(result.due_date)}</b> — {result.explanation}</div>
-            {result.skipped.length > 0 && <div className="text-2xs text-slate-500">Non-working days: {result.skipped.map((s: any) => `${fmtDate(s.date)} (${s.reason})`).join(", ")}</div>}
-          </div>
-        )}
       </form>
-    </div>
+      {result && (
+        <PanelSection label="Result">
+          <p className="text-[18px] font-semibold">{fmtDate(result.due_date)}</p>
+          <p className="text-neutral-600">{result.explanation}</p>
+          {result.skipped.filter((s: any) => !s.reason.startsWith("weekend")).length > 0 && (
+            <p className="mt-1 text-neutral-500">Not counted: {result.skipped.filter((s: any) => !s.reason.startsWith("weekend")).map((s: any) => `${fmtDate(s.date)} (${s.reason.replace("public holiday: ", "")})`).join(", ")}</p>
+          )}
+        </PanelSection>
+      )}
+    </>
   );
 }

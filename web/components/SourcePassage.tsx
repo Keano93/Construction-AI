@@ -54,7 +54,7 @@ export function SourcePassage({ citation, projectId, context = 220 }: { citation
             {end + context < doc.text.length ? "…" : ""}
           </>
         ) : (
-          <span className="text-slate-400">loading…</span>
+          <span className="text-neutral-400">loading…</span>
         )}
       </div>
     </div>
