@@ -17,3 +17,7 @@ body { font-size: 13px; }
   .label { @apply text-xs text-neutral-400; }
   mark.cite { @apply rounded-sm bg-neutral-200 px-0.5 text-neutral-900; }
 }
+
+/* Present mode (commercial meeting on a room screen): no sidebar, larger text */
+body[data-present="1"] .app-sidebar { display: none; }
+body[data-present="1"] .present-scale { zoom: 1.2; }

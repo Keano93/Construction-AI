@@ -12,6 +12,7 @@ const NAV = [
   ["/events", "Event register"],
   ["/revisions", "Revisions"],
   ["/claims", "Claims"],
+  ["/meeting", "Commercial meeting"],
   ["/contract", "Contract rules"],
   ["/documents", "Documents"],
   ["/audit", "Audit log"],
@@ -42,7 +43,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   return (
     <Ctx.Provider value={{ project, reload, system }}>
       <div className="flex min-h-screen bg-neutral-50">
-        <aside className="sticky top-0 flex h-screen w-52 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50">
+        <aside className="app-sidebar sticky top-0 flex h-screen w-52 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50">
           <div className="px-4 pb-3 pt-5">
             <Link href="/projects" className="text-xs font-semibold text-neutral-400 hover:text-neutral-700">Notice</Link>
             <div className="mt-1 truncate text-[14px] font-semibold text-neutral-900">{project?.name ?? "…"}</div>

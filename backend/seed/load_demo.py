@@ -56,6 +56,45 @@ def _ingest_tree(db, project, user, folder: str, kind: str | None = None, run_ag
     return docs
 
 
+ESTIMATES = [  # demo QS estimates, EUR excl. VAT (illustrative figures)
+    (r"RA-STR-110|foundations", 18500, "Larger pads P7-P14: concrete and rebar uplift"),
+    (r"soft ground|B4 to B6", 42000, "Dig-out to 2.5m, mass concrete, standing plant"),
+    (r"sprinkler tank", 48000, "Brightwater indicative EUR 40-50k plus builder's work"),
+    (r"accessible units", 9800, "Partition moves and wider doors, B L1"),
+    (r"lift pit", 14200, "Break out and recast pit base"),
+    (r"outfall", 36500, "85m extra drainage run and road crossing"),
+    (r"brick", 22000, "Cumbrian brick premium, all elevations"),
+    (r"lighting columns", 6400, "4 no. columns, ducting and bases"),
+]
+
+
+def seed_meeting() -> None:
+    """A previous weekly commercial meeting (30 Oct 2026) and some QS estimates, so the meeting view has history."""
+    from notice.models import MeetingItem
+
+    with session_scope() as db:
+        user = db.execute(select(User).where(User.email == EMAIL)).scalar_one()
+        project = db.execute(select(Project).where(Project.org_id == user.org_id)).scalar_one()
+        events = list(db.execute(select(Event).where(Event.project_id == project.id).order_by(Event.trigger_date)).scalars())
+        for pattern, value, note in ESTIMATES:
+            free = [e for e in events if e.estimated_value is None]
+            ev = next((e for e in free if re.search(pattern, e.title, re.I)), None) or \
+                next((e for e in free if re.search(pattern, e.description, re.I)), None)
+            if ev:
+                ev.estimated_value, ev.value_note = value, note
+        meeting = date(2026, 10, 30)
+        for kind, text, owner, due, status, closed in [
+            ("action", "Issue clause 9.2 notice for the revised drainage outfall to MH-IW-07", "Ciarán Walsh", date(2026, 11, 3), "open", None),
+            ("action", "Collect Keelvane daywork sheets and plant records for the B4-B6 dig-out", "Declan Murphy", date(2026, 11, 6), "open", None),
+            ("action", "Get a formal price from Brightwater for the enlarged sprinkler tank room", "Aoife Daly", date(2026, 11, 13), "done", date(2026, 11, 10)),
+            ("decision", "Treat the Irish Water road closure as disruption under clause 8.5; site to keep the lorry log.", None, None, "recorded", None),
+            ("decision", "Do not order the Cumbrian brick until the ER confirms it as an instruction.", None, None, "recorded", None),
+        ]:
+            db.add(MeetingItem(project_id=project.id, meeting_date=meeting, kind=kind, text=text, owner=owner, due_date=due,
+                               status=status, closed_on=closed, created_by=user.id))
+        audit(db, action="seed.meeting_history", actor_type="system", actor_id="seed", org_id=project.org_id, project_id=project.id)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--reset", action="store_true", help="drop and recreate the schema first")
@@ -133,6 +172,7 @@ def main() -> None:
             claim = create_claim(db, project, [e.id for e in ground], user.id, "Unforeseen ground conditions at B4-B6")
             enqueue(db, "claims_agent.draft", {"claim_id": claim.id}, project.id)
     processed += drain()
+    seed_meeting()
     with session_scope() as db:
         pending = db.execute(select(ReviewItem).where(ReviewItem.status == "pending")).scalars().all()
         low = sum(1 for r in pending if r.low_confidence)

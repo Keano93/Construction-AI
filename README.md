@@ -161,6 +161,20 @@ flowchart LR
    effect, quantum heads with `EUR [to be quantified]` placeholders, risks. Citations verified.
 5. A claim draft (DOCX/PDF export once approved) and a review item with the timeline passages.
 
+### Weekly commercial meeting
+
+**Commercial meeting** (one project) is an agenda page for the weekly meeting, shown on screen (with a Present mode
+for the meeting-room display) and exported as a landscape PDF or Word pack. It is computed from the record, with no
+model involved:
+
+1. **Notices**: overdue, due this week and due next week, one row per event with its clauses (deadline engine).
+2. **New since the last meeting**: events the agents found and drawing revisions with possible variations. The last
+   meeting is the latest date with recorded decisions or actions; otherwise the previous 7 days.
+3. **Change and claims register**: open events and claims with notice status and time-bar risk, and **QS estimates**
+   (EUR, excl. VAT) entered inline. Totals: notified, not yet notified, at time-bar risk. Every estimate change is audited.
+4. **Decisions and actions**: open actions carry forward until ticked off; closed actions and the last meeting's
+   decisions are shown for context; new decisions and actions are recorded against the meeting date.
+
 ### Repository layout
 
 ```
@@ -168,6 +182,7 @@ backend/notice/
   ingestion/     extractors (pdf, docx, xlsx, eml, msg, whatsapp, diary, OCR) and ingest service
   contract/      clause splitter, extraction schemas, offline extractor, approval workflow
   deadlines/     calendar + engine (pure, unit-tested)
+  meeting/       weekly commercial meeting pack and PDF/Word export
   agents/        base contract (run_task + tools), citations, identifiers, registry,
                  notice_agent/, revision_agent/, claims_agent/
   review/        review queue actions; every action logged with before/after
