@@ -12,7 +12,7 @@ const NAV = [
   ["/events", "Event register"],
   ["/revisions", "Revisions"],
   ["/claims", "Claims"],
-  ["/meeting", "Commercial meeting"],
+  ["/pack", "Commercial pack"],
   ["/contract", "Contract rules"],
   ["/documents", "Documents"],
   ["/audit", "Audit log"],

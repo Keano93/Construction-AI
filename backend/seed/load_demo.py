@@ -68,9 +68,9 @@ ESTIMATES = [  # demo QS estimates, EUR excl. VAT (illustrative figures)
 ]
 
 
-def seed_meeting() -> None:
-    """A previous weekly commercial meeting (30 Oct 2026) and some QS estimates, so the meeting view has history."""
-    from notice.models import MeetingItem
+def seed_commercial() -> None:
+    """Illustrative QS estimates, and one notice approved and issued on 9 Nov 2026, so the commercial pack has content."""
+    from notice.review import service as review
 
     with session_scope() as db:
         user = db.execute(select(User).where(User.email == EMAIL)).scalar_one()
@@ -82,17 +82,13 @@ def seed_meeting() -> None:
                 next((e for e in free if re.search(pattern, e.description, re.I)), None)
             if ev:
                 ev.estimated_value, ev.value_note = value, note
-        meeting = date(2026, 10, 30)
-        for kind, text, owner, due, status, closed in [
-            ("action", "Issue clause 9.2 notice for the revised drainage outfall to MH-IW-07", "Ciarán Walsh", date(2026, 11, 3), "open", None),
-            ("action", "Collect Keelvane daywork sheets and plant records for the B4-B6 dig-out", "Declan Murphy", date(2026, 11, 6), "open", None),
-            ("action", "Get a formal price from Brightwater for the enlarged sprinkler tank room", "Aoife Daly", date(2026, 11, 13), "done", date(2026, 11, 10)),
-            ("decision", "Treat the Irish Water road closure as disruption under clause 8.5; site to keep the lorry log.", None, None, "recorded", None),
-            ("decision", "Do not order the Cumbrian brick until the ER confirms it as an instruction.", None, None, "recorded", None),
-        ]:
-            db.add(MeetingItem(project_id=project.id, meeting_date=meeting, kind=kind, text=text, owner=owner, due_date=due,
-                               status=status, closed_on=closed, created_by=user.id))
-        audit(db, action="seed.meeting_history", actor_type="system", actor_id="seed", org_id=project.org_id, project_id=project.id)
+        steel = next((e for e in events if re.search(r"extension of time", e.title, re.I)), None)
+        if steel:
+            ri = db.execute(select(ReviewItem).where(ReviewItem.event_id == steel.id)).scalar_one_or_none()
+            if ri and ri.draft_id:
+                review.approve(db, ri, user.id, comment="Demo: approved")
+                review.mark_issued(db, ri, user.id, date(2026, 11, 9), comment="Demo: sent by email")
+        audit(db, action="seed.commercial", actor_type="system", actor_id="seed", org_id=project.org_id, project_id=project.id)
 
 
 def main() -> None:
@@ -172,7 +168,7 @@ def main() -> None:
             claim = create_claim(db, project, [e.id for e in ground], user.id, "Unforeseen ground conditions at B4-B6")
             enqueue(db, "claims_agent.draft", {"claim_id": claim.id}, project.id)
     processed += drain()
-    seed_meeting()
+    seed_commercial()
     with session_scope() as db:
         pending = db.execute(select(ReviewItem).where(ReviewItem.status == "pending")).scalars().all()
         low = sum(1 for r in pending if r.low_confidence)

@@ -161,19 +161,22 @@ flowchart LR
    effect, quantum heads with `EUR [to be quantified]` placeholders, risks. Citations verified.
 5. A claim draft (DOCX/PDF export once approved) and a review item with the timeline passages.
 
-### Weekly commercial meeting
+### Commercial pack
 
-**Commercial meeting** (one project) is an agenda page for the weekly meeting, shown on screen (with a Present mode
-for the meeting-room display) and exported as a landscape PDF or Word pack. It is computed from the record, with no
-model involved:
+**Commercial pack** (one project) is the latest commercial position for an adjustable period (last 7 / 14 / 30 days
+or a custom range), shown on screen (with a Present mode for a meeting-room display) and exported as a landscape
+PDF or Word pack with the same content. It is the input to the weekly commercial meeting, not its minutes: Notice
+does not record meeting notes or actions. Everything is computed from the record, with no model involved:
 
-1. **Notices**: overdue, due this week and due next week, one row per event with its clauses (deadline engine).
-2. **New since the last meeting**: events the agents found and drawing revisions with possible variations. The last
-   meeting is the latest date with recorded decisions or actions; otherwise the previous 7 days.
-3. **Change and claims register**: open events and claims with notice status and time-bar risk, and **QS estimates**
-   (EUR, excl. VAT) entered inline. Totals: notified, not yet notified, at time-bar risk. Every estimate change is audited.
-4. **Decisions and actions**: open actions carry forward until ticked off; closed actions and the last meeting's
-   decisions are shown for context; new decisions and actions are recorded against the meeting date.
+* Headline figures: notices overdue, due within 10 working days, issued in the period, new events, estimated value,
+  value at time-bar risk.
+* Charts (one neutral hue, red only for overdue, each with a table view): events found per week, notice position of
+  open events, estimated value by type.
+1. **Notices** at the end of the period: overdue, due within 5 and within 10 working days (deadline engine).
+2. **Notices issued** in the period, and whether each was in time.
+3. **New in the period**: events, drawing revisions with possible variations, and claims.
+4. **Change and claims register** at the end of the period, with **QS estimates** (EUR, excl. VAT) entered inline;
+   totals notified / not yet notified / at time-bar risk. Every estimate change is audited.
 
 ### Repository layout
 
@@ -182,7 +185,7 @@ backend/notice/
   ingestion/     extractors (pdf, docx, xlsx, eml, msg, whatsapp, diary, OCR) and ingest service
   contract/      clause splitter, extraction schemas, offline extractor, approval workflow
   deadlines/     calendar + engine (pure, unit-tested)
-  meeting/       weekly commercial meeting pack and PDF/Word export
+  pack/          commercial pack (date range) and PDF/Word export
   agents/        base contract (run_task + tools), citations, identifiers, registry,
                  notice_agent/, revision_agent/, claims_agent/
   review/        review queue actions; every action logged with before/after

@@ -114,10 +114,16 @@ Phases 2–4 add agents as new packages under `notice/agents/` using the same ba
 - The register diff shows that a drawing was revised, not what changed on it, unless both drawing revisions are uploaded.
 - The Claude prompts for both agents are written, but nothing has been run against the live API in this environment.
 
-## 6. Weekly commercial meeting view
+## 6. Commercial pack
 
-- One project, on screen plus a PDF/Word pack. Sections: notices (overdue / this week / next week), new since the last meeting, change and claims register with QS estimates, decisions and actions (carried forward).
-- Data: `events.estimated_value`, `events.value_note`, `claims.estimated_value`, `meeting_items` (decision | action, owner, due date, status, meeting date). Migration 0003. All edits audited.
-- Seed: a previous meeting on 30 Oct 2026 (2 open actions, 1 closed, 2 decisions) and illustrative estimates on 8 events.
-- Tests: 98 backend tests (5 new for the meeting: sections and week buckets, estimates and totals, carry-forward and closing, exports, tenancy).
-- Not yet: a portfolio roll-up across projects, attendees/minutes text, and values from the Valuation agent (Phase 3) instead of manual estimates.
+- One project, an adjustable date range (presets and custom), on screen and as a PDF/Word pack. Notice produces the
+  pack for the weekly commercial meeting; it does not keep meeting minutes, decisions or actions (those belong in the
+  team's own meeting tools). The decisions/actions table from the first iteration was removed (migration 0004).
+- Sections: headline figures; charts (events per week, notice position, estimated value by type); notices at the end
+  of the period; notices issued in the period; new events, revisions and claims in the period; change and claims
+  register with QS estimates (`events.estimated_value`, `events.value_note`, `claims.estimated_value`, audited).
+- Seed: illustrative estimates on 8 events and one notice approved and issued on 9 Nov 2026.
+- Tests: 99 backend tests (6 for the pack: range handling, buckets relative to the period end, estimates and notes,
+  issued-in-period, exports, tenancy).
+- Next: a portfolio roll-up across projects for directors, after the Valuation agent (Phase 3) so it can use
+  valuation figures rather than manual estimates.

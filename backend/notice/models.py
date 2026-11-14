@@ -428,22 +428,3 @@ class Claim(Base):
     estimated_value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))  # QS estimate, EUR excl. VAT
     created_by: Mapped[uuid.UUID | None] = fk("users.id", nullable=True)
     created_at: Mapped[datetime] = created()
-
-
-class MeetingItem(Base):
-    """A decision or action recorded at a weekly commercial meeting. Open actions carry forward until closed."""
-
-    __tablename__ = "meeting_items"
-    id: Mapped[uuid.UUID] = pk()
-    project_id: Mapped[uuid.UUID] = fk("projects.id")
-    meeting_date: Mapped[date] = mapped_column(Date, index=True)
-    kind: Mapped[str] = mapped_column(String(20))  # decision | action
-    text: Mapped[str] = mapped_column(Text)
-    owner: Mapped[str | None] = mapped_column(String(200))
-    due_date: Mapped[date | None] = mapped_column(Date)
-    status: Mapped[str] = mapped_column(String(20), default="open")  # open | done | cancelled (decisions: recorded)
-    event_id: Mapped[uuid.UUID | None] = fk("events.id", nullable=True)
-    claim_id: Mapped[uuid.UUID | None] = fk("claims.id", nullable=True)
-    created_by: Mapped[uuid.UUID | None] = fk("users.id", nullable=True)
-    created_at: Mapped[datetime] = created()
-    closed_on: Mapped[date | None] = mapped_column(Date)
